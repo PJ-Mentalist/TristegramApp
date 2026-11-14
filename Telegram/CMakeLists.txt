@@ -1999,6 +1999,8 @@ PRIVATE
     extera/extera_menu.h
     extera/tristegram_bar.cpp
     extera/tristegram_bar.h
+    extera/tristegram_logo.cpp
+    extera/tristegram_logo.h
     extera/extera_plugins.cpp
     extera/extera_plugins.h
     extera/extera_plugins_ui.cpp

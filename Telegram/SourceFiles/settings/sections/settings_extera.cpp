@@ -30,6 +30,7 @@
 #include "history/history.h"
 #include "info/profile/info_profile_emoji_status_panel.h"
 #include "extera/extera_menu.h"
+#include "extera/tristegram_logo.h"
 #include "history/view/media/history_view_sticker.h"
 #include "ui/filter_icons.h"
 #include "extera/extera_navigation.h"
@@ -3848,8 +3849,63 @@ void PartTristegram(SectionBuilder &builder) {
 			u"tristegram_eco"_q,
 			tr::lng_tristegram_eco(),
 			{ u"eco"_q, u"battery"_q, u"animation"_q });
+		AddToggle(
+			builder,
+			u"tristegram_bar_seconds"_q,
+			tr::lng_tristegram_bar_seconds(),
+			{ u"clock"_q, u"seconds"_q });
+		AddToggle(
+			builder,
+			u"tristegram_bar_ping"_q,
+			tr::lng_tristegram_bar_ping(),
+			{ u"ping"_q });
 	});
 	AddAbout(builder, tr::lng_tristegram_section_about());
+	builder.addSkip();
+	builder.card([&] {
+		AddChoice(
+			builder,
+			u"tristegram_logo"_q,
+			tr::lng_tristegram_logo_color,
+			{
+				&tr::lng_tristegram_logo_p0,
+				&tr::lng_tristegram_logo_p1,
+				&tr::lng_tristegram_logo_p2,
+				&tr::lng_tristegram_logo_p3,
+				&tr::lng_tristegram_logo_p4,
+				&tr::lng_tristegram_logo_p5,
+				&tr::lng_tristegram_logo_p6,
+				&tr::lng_tristegram_logo_p7,
+				&tr::lng_tristegram_logo_p8,
+				&tr::lng_tristegram_logo_p9,
+				&tr::lng_tristegram_logo_p10,
+				&tr::lng_tristegram_logo_p11,
+			},
+			{ u"logo"_q, u"color"_q, u"gradient"_q },
+			[](QPainter &p, QRect rect, int index) {
+				const auto size = std::min(rect.height() - 4, rect.width());
+				auto style = Tristegram::LogoPreset(index);
+				style.glow = false;
+				Tristegram::PaintLogo(
+					p,
+					QRectF(
+						rect.x() + rect.width() - size,
+						rect.y() + (rect.height() - size) / 2.,
+						size,
+						size),
+					style);
+			});
+		AddToggle(
+			builder,
+			u"tristegram_logo_glow"_q,
+			tr::lng_tristegram_logo_glow(),
+			{ u"logo"_q, u"glow"_q });
+		AddToggle(
+			builder,
+			u"tristegram_logo_anim"_q,
+			tr::lng_tristegram_logo_anim(),
+			{ u"logo"_q, u"animation"_q });
+	});
 }
 
 void PartPremium(SectionBuilder &builder);

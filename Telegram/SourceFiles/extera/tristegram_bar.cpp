@@ -9,6 +9,8 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "data/data_session.h"
 #include "data/data_user.h"
 #include "extera/extera_changelog.h"
+#include "extera/extera_config.h"
+#include "extera/tristegram_logo.h"
 #include "lang/lang_keys.h"
 #include "main/main_account.h"
 #include "main/main_domain.h"
@@ -43,13 +45,19 @@ TopBar::TopBar(
 	not_null<Window::SessionController*> controller)
 : RpWidget(parent)
 , _controller(controller)
-, _api(&controller->session().mtp())
-, _logo(u":/gui/art/logo_256.png"_q) {
+, _api(&controller->session().mtp()) {
 	setMouseTracking(true);
 	resize(width(), DefaultHeight());
 	_timer.setCallback([=] { tick(); });
 	_timer.callEach(1000);
 	requestPing();
+
+	Extera::Config::Instance().changes(
+	) | rpl::on_next([=](const QString &key) {
+		if (key.startsWith(u"tristegram_"_q)) {
+			update();
+		}
+	}, lifetime());
 }
 
 int TopBar::DefaultHeight() {
@@ -71,7 +79,9 @@ QRect TopBar::brandRect() const {
 }
 
 QString TopBar::clockText() const {
-	return QTime::currentTime().toString(u"HH:mm:ss"_q);
+	return QTime::currentTime().toString(Extera::Bool(u"tristegram_bar_seconds"_q)
+		? u"HH:mm:ss"_q
+		: u"HH:mm"_q);
 }
 
 QString TopBar::pingText() const {
@@ -82,7 +92,9 @@ QString TopBar::pingText() const {
 }
 
 QRect TopBar::statusRect() const {
-	const auto text = clockText() + u"   "_q + pingText();
+	const auto text = Extera::Bool(u"tristegram_bar_ping"_q)
+		? (clockText() + u"   "_q + pingText())
+		: clockText();
 	const auto w = st::normalFont->width(text) + Px(16);
 	return QRect(width() - w - Px(6), Px(4), w, height() - Px(8));
 }
@@ -129,10 +141,16 @@ void TopBar::paintEvent(QPaintEvent *e) {
 		brand.y() + (brand.height() - logoSize) / 2,
 		logoSize,
 		logoSize);
-	p.drawImage(logo, _logo);
+	const auto logoStyle = Tristegram::CurrentLogoStyle();
+	Tristegram::PaintLogo(p, QRectF(logo), logoStyle, _spin.value(1.));
 
+	auto textGradient = QLinearGradient(
+		QPointF(logo.x() + logo.width() + Px(8), 0),
+		QPointF(brand.x() + brand.width(), 0));
+	textGradient.setColorAt(0., logoStyle.from);
+	textGradient.setColorAt(1., logoStyle.to);
 	p.setFont(st::semiboldFont);
-	p.setPen(st::windowBgActive);
+	p.setPen(QPen(QBrush(textGradient), 1));
 	p.drawText(
 		QRect(
 			logo.x() + logo.width() + Px(8),
@@ -152,8 +170,10 @@ void TopBar::paintEvent(QPaintEvent *e) {
 		const auto inner = status.marginsRemoved(
 			QMargins(Px(8), 0, Px(8), 0));
 		p.drawText(inner, Qt::AlignLeft | Qt::AlignVCenter, clockText());
-		p.setPen(st::windowBgActive);
-		p.drawText(inner, Qt::AlignRight | Qt::AlignVCenter, pingText());
+		if (Extera::Bool(u"tristegram_bar_ping"_q)) {
+			p.setPen(st::windowBgActive);
+			p.drawText(inner, Qt::AlignRight | Qt::AlignVCenter, pingText());
+		}
 	}
 }
 
@@ -161,6 +181,9 @@ void TopBar::mouseMoveEvent(QMouseEvent *e) {
 	const auto over = areaAt(e->pos());
 	if (_over != over) {
 		_over = over;
+		if (over == Area::Brand) {
+			spinLogo();
+		}
 		setCursor((over == Area::None)
 			? style::cur_default
 			: style::cur_pointer);
@@ -182,7 +205,7 @@ void TopBar::mousePressEvent(QMouseEvent *e) {
 	}
 	switch (areaAt(e->pos())) {
 	case Area::Account: showAccountsMenu(); break;
-	case Area::Brand: showBrandMenu(); break;
+	case Area::Brand: spinLogo(); showBrandMenu(); break;
 	default: break;
 	}
 }
@@ -192,6 +215,13 @@ void TopBar::tick() {
 		requestPing();
 	}
 	update();
+}
+
+void TopBar::spinLogo() {
+	if (!Tristegram::LogoAnimationEnabled() || _spin.animating()) {
+		return;
+	}
+	_spin.start([=] { update(); }, 0., 1., 900);
 }
 
 void TopBar::requestPing() {

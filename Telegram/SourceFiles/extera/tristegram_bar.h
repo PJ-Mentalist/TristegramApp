@@ -6,6 +6,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 
 #include "ui/rp_widget.h"
 #include "ui/userpic_view.h"
+#include "ui/effects/animations.h"
 #include "base/timer.h"
 #include "base/unique_qptr.h"
 #include "mtproto/sender.h"
@@ -52,6 +53,7 @@ private:
 	[[nodiscard]] QString pingText() const;
 
 	void tick();
+	void spinLogo();
 	void requestPing();
 	void showAccountsMenu();
 	void showBrandMenu();
@@ -59,7 +61,7 @@ private:
 	const not_null<Window::SessionController*> _controller;
 	MTP::Sender _api;
 	Ui::PeerUserpicView _userpic;
-	QImage _logo;
+	Ui::Animations::Simple _spin;
 	base::Timer _timer;
 	base::unique_qptr<Ui::PopupMenu> _menu;
 	Area _over = Area::None;
