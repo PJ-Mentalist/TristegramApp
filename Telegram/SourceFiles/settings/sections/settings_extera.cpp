@@ -32,6 +32,8 @@
 #include "extera/extera_menu.h"
 #include "extera/tristegram_logo.h"
 #include "extera/tristegram_folders.h"
+#include "extera/tristegram_fonts.h"
+#include "settings/sections/settings_chat.h"
 #include "history/view/media/history_view_sticker.h"
 #include "ui/filter_icons.h"
 #include "extera/extera_navigation.h"
@@ -3883,6 +3885,34 @@ void PartTristegram(SectionBuilder &builder) {
 		});
 	});
 	AddAbout(builder, tr::lng_tristegram_tabs_about());
+	builder.addSkip();
+	builder.addSubsectionTitle(tr::lng_tristegram_font_title());
+	builder.card([&] {
+		const auto controller = builder.controller();
+		builder.addButton({
+			.id = u"extera/tristegram_font_upload"_q,
+			.title = tr::lng_tristegram_font_upload(),
+			.st = &st::settingsButtonNoIcon,
+			.onClick = [=] {
+				if (controller) {
+					Tristegram::ChooseUserFont(controller);
+				}
+			},
+			.keywords = { u"font"_q, u"ttf"_q },
+		});
+		builder.addButton({
+			.id = u"extera/tristegram_font_pick"_q,
+			.title = tr::lng_tristegram_font_pick(),
+			.st = &st::settingsButtonNoIcon,
+			.onClick = [=] {
+				if (controller) {
+					controller->showSettings(Settings::ChatId());
+				}
+			},
+			.keywords = { u"font"_q },
+		});
+	});
+	AddAbout(builder, tr::lng_tristegram_font_about());
 	builder.addSkip();
 	builder.card([&] {
 		AddChoice(

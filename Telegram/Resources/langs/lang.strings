@@ -10095,6 +10095,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_tristegram_tab_groups" = "Groups";
 "lng_tristegram_tab_channels" = "Channels";
 "lng_tristegram_tab_bots" = "Bots";
+"lng_tristegram_font_title" = "Interface font";
+"lng_tristegram_font_upload" = "Upload your font (TTF, OTF)";
+"lng_tristegram_font_pick" = "Choose an installed font";
+"lng_tristegram_font_choose" = "Choose a font file";
+"lng_tristegram_font_failed" = "Could not open this font file";
+"lng_tristegram_font_about" = "The font applies after a restart. If it has no Cyrillic letters, they are taken from the standard font.";
 "lng_tristegram_private_avatars" = "Avatars in private chats";
 "lng_tristegram_section" = "Tristegram";
 "lng_tristegram_top_bar" = "Tristegram bar above chats";

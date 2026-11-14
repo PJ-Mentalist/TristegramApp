@@ -2003,6 +2003,8 @@ PRIVATE
     extera/tristegram_logo.h
     extera/tristegram_folders.cpp
     extera/tristegram_folders.h
+    extera/tristegram_fonts.cpp
+    extera/tristegram_fonts.h
     extera/extera_plugins.cpp
     extera/extera_plugins.h
     extera/extera_plugins_ui.cpp

@@ -6,6 +6,8 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "core/application.h"
+
+#include "extera/tristegram_fonts.h"
 #include "data/data_forum_topic.h"
 #include "ui/emoji_config.h"
 #include "extera/extera_update.h"
@@ -563,6 +565,7 @@ void Application::run() {
 
 	startLocalStorage();
 
+	Tristegram::RegisterUserFonts();
 	style::SetCustomFont(settings().customFontFamily());
 	style::internal::StartFonts();
 
