@@ -3859,6 +3859,11 @@ void PartTristegram(SectionBuilder &builder) {
 			u"tristegram_bar_ping"_q,
 			tr::lng_tristegram_bar_ping(),
 			{ u"ping"_q });
+		AddToggle(
+			builder,
+			u"tristegram_bar_clock"_q,
+			tr::lng_tristegram_bar_clock(),
+			{ u"clock"_q, u"plugins"_q });
 	});
 	AddAbout(builder, tr::lng_tristegram_section_about());
 	builder.addSkip();

@@ -78,6 +78,7 @@ constexpr auto kSaveDelay = crl::time(1000);
 		{ u"tristegram_logo_anim"_q, true },
 		{ u"tristegram_bar_seconds"_q, true },
 		{ u"tristegram_bar_ping"_q, true },
+		{ u"tristegram_bar_clock"_q, true },
 		{ u"folder_title_style"_q, 0 },
 		{ u"folder_counter"_q, 0 },
 		{ u"hide_all_chats"_q, false },
