@@ -48,6 +48,7 @@ jobs:
         with:
           submodules: recursive
           path: TBuild\tdesktop
+          fetch-depth: 200
 
       - name: Tristegram patches
         shell: bash
@@ -56,6 +57,39 @@ jobs:
           cd "$TBUILD/tdesktop"
           if [ -f Telegram/build/tristegram/lib_ui.patch ]; then
             git -C Telegram/lib_ui apply --whitespace=nowarn ../build/tristegram/lib_ui.patch
+          fi
+
+      - name: Restore compiled objects
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.REPO_DIR }}\out
+          key: win64-out-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: win64-out-${{ github.ref_name }}-
+
+      - name: Keep unchanged files unchanged
+        shell: bash
+        run: |
+          # Чтобы пересобирались только изменённые файлы: всем исходникам ставим
+          # старую дату, а изменённым с прошлой сборки — текущую.
+          cd "$TBUILD/tdesktop"
+          PREV="$(cat out/tristegram_commit.txt 2>/dev/null || true)"
+          if [ -n "$PREV" ] && git cat-file -e "$PREV^{commit}" 2>/dev/null; then
+            find . -path ./out -prune -o -name .git -prune -o -type f -print0 \
+              | xargs -0 touch -d '2020-01-01 00:00:00'
+            git diff --name-only "$PREV" HEAD > ../changed.txt || true
+            while IFS= read -r f; do
+              if [ -d "$f" ]; then
+                find "$f" -type f -print0 | xargs -0 touch
+              elif [ -f "$f" ]; then
+                touch "$f"
+              fi
+              if [ "$f" = "Telegram/build/tristegram/lib_ui.patch" ]; then
+                find Telegram/lib_ui -name .git -prune -o -type f -print0 | xargs -0 touch
+              fi
+            done < ../changed.txt
+            echo "Изменено с прошлой сборки: $(wc -l < ../changed.txt) файлов"
+          else
+            echo "Прошлой сборки нет — собираем всё."
           fi
 
       - name: First set up
@@ -106,6 +140,7 @@ jobs:
           nuget sources Disable -Name "Microsoft Visual Studio Offline Packages" & exit 0
 
       - name: Restore ThirdParty cache
+        id: thirdparty-cache
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.TBUILD }}\ThirdParty
@@ -127,14 +162,14 @@ jobs:
           %REPO_DIR%\Telegram\build\prepare\win.bat silent
 
       - name: Save ThirdParty cache
-        if: always() && steps.libs.outcome != 'skipped'
+        if: always() && steps.libs.outcome != 'skipped' && !startsWith(steps.thirdparty-cache.outputs.cache-matched-key, format('win64d-third-party-{0}', env.CACHE_KEY))
         uses: actions/cache/save@v4
         with:
           path: ${{ env.TBUILD }}\ThirdParty
           key: win64d-third-party-${{ env.CACHE_KEY }}-${{ github.run_id }}
 
       - name: Save Libraries cache
-        if: always() && steps.libs.outcome != 'skipped'
+        if: always() && steps.libs.outcome != 'skipped' && !startsWith(steps.libs-cache.outputs.cache-matched-key, format('win64d-libs-{0}', env.CACHE_KEY))
         uses: actions/cache/save@v4
         with:
           path: ${{ env.LibrariesPath }}
@@ -183,6 +218,7 @@ jobs:
           Expand-Archive embed.zip -DestinationPath "$dst\embed" -Force
 
       - name: Build Tristegram
+        id: build
         env:
           API_ID: ${{ secrets.TDESKTOP_API_ID }}
           API_HASH: ${{ secrets.TDESKTOP_API_HASH }}
@@ -193,11 +229,26 @@ jobs:
             -D TDESKTOP_API_HASH=%API_HASH% ^
             -D CMAKE_CONFIGURATION_TYPES=Release ^
             -D DESKTOP_APP_DISABLE_AUTOUPDATE=ON ^
-            -D DESKTOP_APP_DISABLE_CRASH_REPORTS=ON
+            -D DESKTOP_APP_DISABLE_CRASH_REPORTS=ON ^
+            -D CMAKE_MSVC_DEBUG_INFORMATION_FORMAT=
           if errorlevel 1 exit /b 1
           rem Проекты по одному: каждый и так компилирует файлы параллельно (/MP), а память раннера ограничена.
           cmake --build ..\out --config Release -- /m:1
           if errorlevel 1 exit /b 1
+
+      - name: Save compiled objects
+        if: always() && steps.build.outcome != 'skipped'
+        shell: bash
+        run: |
+          cd "$TBUILD/tdesktop"
+          if [ -d out ]; then git rev-parse HEAD > out/tristegram_commit.txt; fi
+
+      - name: Upload compiled objects
+        if: always() && steps.build.outcome != 'skipped'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.REPO_DIR }}\out
+          key: win64-out-${{ github.ref_name }}-${{ github.run_id }}
 
       - name: Package
         shell: pwsh
