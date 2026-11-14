@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "dialogs/ui/dialogs_layout.h"
 #include "extera/extera_config.h"
 #include "extera/extera_streamer.h"
+#include "extera/tristegram_logo.h"
 
 #include "base/options.h"
 #include <QtGui/QPainterPath>
@@ -660,6 +661,42 @@ void PaintRow(
 				&& !draft
 				&& item
 				&& !item->isEmpty()));
+	}
+
+	// Tristegram: optional frame around chat list userpics.
+	if (const auto ring = Extera::Int(u"tristegram_avatar_ring"_q)) {
+		auto hq = PainterHighQualityEnabler(p);
+		const auto size = context.st->photoSize;
+		const auto width = (ring == 1)
+			? style::ConvertScale(1) * 1.5
+			: style::ConvertScale(2) * 1.;
+		const auto skip = width / 2. + style::ConvertScale(1);
+		const auto frame = QRectF(
+			context.st->padding.left(),
+			context.st->padding.top(),
+			size,
+			size).marginsAdded(QMarginsF(skip, skip, skip, skip));
+		auto brush = QBrush();
+		if (ring == 1) {
+			auto color = context.active
+				? st::dialogsTextFgActive->c
+				: st::windowSubTextFg->c;
+			color.setAlphaF(0.55);
+			brush = QBrush(color);
+		} else if (ring == 2) {
+			brush = QBrush(context.active
+				? st::dialogsTextFgActive->c
+				: st::windowBgActive->c);
+		} else {
+			const auto style = Tristegram::CurrentLogoStyle();
+			auto gradient = QLinearGradient(frame.topRight(), frame.bottomLeft());
+			gradient.setColorAt(0., style.from);
+			gradient.setColorAt(1., style.to);
+			brush = QBrush(gradient);
+		}
+		p.setPen(QPen(brush, width));
+		p.setBrush(Qt::NoBrush);
+		p.drawEllipse(frame);
 	}
 
 	const auto nameleft = context.st->nameLeft;

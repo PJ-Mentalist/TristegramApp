@@ -6,6 +6,8 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/history_widget.h"
+
+#include "extera/tristegram_logo.h"
 #include "ui/wrap/fade_wrap.h"
 
 #include "extera/extera_utils.h"
@@ -12016,6 +12018,18 @@ void HistoryWidget::paintEvent(QPaintEvent *e) {
 			w,
 			h);
 		const auto st = controller()->chatStyle();
+		if (Extera::Bool(u"tristegram_empty_logo"_q)) {
+			const auto size = style::ConvertScale(96);
+			const auto logo = QRectF(
+				(width() - size) / 2.,
+				tr.top() - size - style::ConvertScale(18),
+				size,
+				size);
+			if (logo.top() > 0) {
+				auto hq = PainterHighQualityEnabler(p);
+				Tristegram::PaintLogo(p, logo, Tristegram::CurrentLogoStyle());
+			}
+		}
 		HistoryView::ServiceMessagePainter::PaintBubble(p, st, tr);
 
 		p.setPen(st->msgServiceFg());

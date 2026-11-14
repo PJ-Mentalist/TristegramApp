@@ -163,7 +163,22 @@ int LogoPresetsCount() {
 	return int(kPresets.size());
 }
 
+int LogoCustomIndex() {
+	return LogoPresetsCount();
+}
+
 LogoStyle LogoPreset(int index) {
+	if (index == LogoCustomIndex()) {
+		auto from = QColor(Extera::String(u"tristegram_logo_c1"_q));
+		auto to = QColor(Extera::String(u"tristegram_logo_c2"_q));
+		if (!from.isValid()) {
+			from = QColor(0xF0, 0x7A, 0x0C);
+		}
+		if (!to.isValid()) {
+			to = from;
+		}
+		return { .from = from, .to = to, .glow = true };
+	}
 	const auto &preset = kPresets[std::clamp(index, 0, LogoPresetsCount() - 1)];
 	return {
 		.from = QColor(QString::fromLatin1(preset.from)),
@@ -172,9 +187,31 @@ LogoStyle LogoPreset(int index) {
 	};
 }
 
-LogoStyle CurrentLogoStyle() {
+bool LogoAmbientAnimated() {
+	return !Extera::Bool(u"tristegram_eco"_q)
+		&& ((Extera::Bool(u"tristegram_logo_glow"_q)
+			&& Extera::Bool(u"tristegram_logo_pulse"_q))
+			|| Extera::Bool(u"tristegram_logo_shift"_q));
+}
+
+LogoStyle CurrentLogoStyle(crl::time now) {
 	auto result = LogoPreset(Extera::Int(u"tristegram_logo"_q));
 	result.glow = Extera::Bool(u"tristegram_logo_glow"_q);
+	result.angle = Extera::Int(u"tristegram_logo_angle"_q);
+	result.glowPower = std::clamp(
+		Extera::Int(u"tristegram_logo_glow_power"_q) / 100.,
+		0.1,
+		1.);
+	const auto eco = Extera::Bool(u"tristegram_eco"_q);
+	if (now && !eco) {
+		if (Extera::Bool(u"tristegram_logo_shift"_q)) {
+			result.angle += double(now % 12000) * 360. / 12000.;
+		}
+		if (Extera::Bool(u"tristegram_logo_pulse"_q)) {
+			const auto phase = double(now % 2800) / 2800. * 2. * kPi;
+			result.glowPower *= 0.7 + 0.3 * std::sin(phase);
+		}
+	}
 	return result;
 }
 
@@ -206,9 +243,12 @@ void PaintLogo(
 		p.translate(-kCenter, -kCenter);
 	}
 
+	const auto direction = style.angle * kPi / 180.;
+	const auto dx = std::cos(direction) * kCenter;
+	const auto dy = std::sin(direction) * kCenter;
 	auto gradient = QLinearGradient(
-		QPointF(kCenter + 90.5, kCenter - 90.5),
-		QPointF(kCenter - 90.5, kCenter + 90.5));
+		QPointF(kCenter - dx, kCenter - dy),
+		QPointF(kCenter + dx, kCenter + dy));
 	gradient.setColorAt(0., style.from);
 	gradient.setColorAt(1., style.to);
 	const auto brush = QBrush(gradient);
@@ -216,7 +256,7 @@ void PaintLogo(
 	if (style.glow) {
 		auto glow = QRadialGradient(QPointF(kCenter, kCenter), kCenter * 1.32);
 		auto inner = style.from;
-		inner.setAlphaF(0.55);
+		inner.setAlphaF(std::clamp(0.9 * style.glowPower, 0., 1.));
 		auto outer = style.to;
 		outer.setAlphaF(0.);
 		glow.setColorAt(0.7, inner);

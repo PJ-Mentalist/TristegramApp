@@ -64,6 +64,7 @@ private:
 	enum class Area {
 		None,
 		Account,
+		Hide,
 		Ping,
 		Brand,
 		Clock,
@@ -71,6 +72,7 @@ private:
 
 	struct Layout {
 		QRect account;
+		QRect hide;
 		QRect ping;
 		QRect brand;
 		QRect clock;
@@ -87,6 +89,9 @@ private:
 	void paintPing(QPainter &p, QRect rect) const;
 	void paintBrand(QPainter &p, QRect rect) const;
 	void paintClock(QPainter &p, QRect rect) const;
+	void paintHide(QPainter &p, QRect rect) const;
+	void showPluginsMenu();
+	void refreshAmbient();
 
 	void tick();
 	void spinLogo();
@@ -103,6 +108,7 @@ private:
 	Ui::Animations::Simple _spin;
 	base::Timer _timer;
 	base::Timer _hideTimer;
+	base::Timer _ambient;
 	base::unique_qptr<Ui::PopupMenu> _menu;
 	base::unique_qptr<ConnectionPanel> _panel;
 	PingHistory _history;

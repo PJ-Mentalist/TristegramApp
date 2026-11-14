@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "dialogs/dialogs_row.h"
 
+#include "extera/extera_config.h"
+
 #include "ui/chat/chat_theme.h" // CountAverageColor.
 #include "ui/color_contrast.h"
 #include "ui/effects/credits_graphics.h"
@@ -687,6 +689,8 @@ void Row::PaintCornerBadgeFrame(
 	q.setPen(pen);
 	q.setBrush(data->active
 		? st::dialogsOnlineBadgeFgActive
+		: Extera::Bool(u"tristegram_online_accent"_q)
+		? st::windowBgActive
 		: st::dialogsOnlineBadgeFg);
 	q.drawEllipse(QRectF(
 		photoSize - skip.x() - size,

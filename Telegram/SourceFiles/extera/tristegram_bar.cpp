@@ -10,6 +10,13 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "data/data_user.h"
 #include "extera/extera_changelog.h"
 #include "extera/extera_config.h"
+#include "extera/extera_plugins.h"
+#include "extera/extera_streamer.h"
+#include "base/call_delayed.h"
+#include <QtCore/QJsonArray>
+#include <QtCore/QJsonObject>
+#include <QtCore/QLocale>
+#include <QtCore/QDateTime>
 #include "extera/tristegram_logo.h"
 #include "lang/lang_keys.h"
 #include "main/main_account.h"
@@ -479,15 +486,95 @@ TopBar::TopBar(
 	_timer.setCallback([=] { tick(); });
 	_timer.callEach(1000);
 	_hideTimer.setCallback([=] { hidePanel(); });
+	_ambient.setCallback([=] { update(); });
 	requestPing();
+	refreshAmbient();
 
 	Extera::Config::Instance().changes(
 	) | rpl::on_next([=](const QString &key) {
-		if (key.startsWith(u"tristegram_"_q)) {
+		if (key.startsWith(u"tristegram_"_q)
+			|| key.startsWith(u"streamer_"_q)) {
+			refreshAmbient();
 			updateLayout();
 			update();
 		}
 	}, lifetime());
+
+	if (Extera::Bool(u"tristegram_logo_intro"_q)) {
+		base::call_delayed(450, this, [=] { spinLogo(); });
+	}
+}
+
+void TopBar::refreshAmbient() {
+	if (LogoAmbientAnimated()) {
+		if (!_ambient.isActive()) {
+			_ambient.callEach(40);
+		}
+	} else {
+		_ambient.cancel();
+	}
+}
+
+void TopBar::paintHide(QPainter &p, QRect rect) const {
+	const auto radius = rect.height() / 2.;
+	p.setPen(Qt::NoPen);
+	auto bg = st::windowBgActive->c;
+	bg.setAlphaF(_over == Area::Hide ? 0.24 : 0.14);
+	p.setBrush(bg);
+	p.drawRoundedRect(rect, radius, radius);
+	p.setFont(st::semiboldFont);
+	p.setPen(st::windowActiveTextFg);
+	p.drawText(rect, Qt::AlignCenter, tr::lng_tristegram_hide_badge(tr::now));
+}
+
+void TopBar::showPluginsMenu() {
+	using namespace Extera::Plugins;
+	_menu = base::make_unique_q<Ui::PopupMenu>(
+		this,
+		st::popupMenuWithIcons);
+	const auto locale = QLocale::system();
+	const auto now = QDateTime::currentDateTime();
+	auto header = now.toString(u"HH:mm:ss"_q)
+		+ QString::fromUtf8("  \xc2\xb7  ")
+		+ locale.toString(now.date(), u"dddd, d MMMM"_q);
+	_menu->addAction(header, [] {}, &st::menuIconSchedule)->setEnabled(false);
+	_menu->addSeparator();
+	auto any = false;
+	if (Started()) {
+		for (const auto &entry : Call(u"list"_q).toArray()) {
+			const auto info = entry.toObject();
+			const auto id = info.value(u"id"_q).toString();
+			const auto name = info.value(u"name"_q).toString();
+			if (id.isEmpty()) {
+				continue;
+			}
+			any = true;
+			const auto enabled = info.value(u"enabled"_q).toBool();
+			_menu->addAction(name.isEmpty() ? id : name, [=] {
+				if (!enabled && Extera::Bool(u"plugins_safe_mode"_q)) {
+					_controller->showToast(
+						tr::lng_exd_safe_mode_blocked(tr::now));
+					return;
+				}
+				Call(u"set_enabled"_q, QJsonObject{
+					{ u"id"_q, id },
+					{ u"enabled"_q, !enabled },
+				});
+				notifyListChanged();
+			}, enabled ? &st::menuIconSelect : &st::menuIconCustomize);
+		}
+	}
+	if (!any) {
+		_menu->addAction(
+			tr::lng_tristegram_plugins_none(tr::now),
+			[] {},
+			&st::menuIconInfo)->setEnabled(false);
+	}
+	_menu->addSeparator();
+	_menu->addAction(tr::lng_tristegram_plugins_all(tr::now), [=] {
+		_controller->showSettings(Settings::ExteraPluginsId());
+	}, &st::menuIconSettings);
+	_menu->popup(mapToGlobal(QPoint(_layout.clock.x(), height())));
 }
 
 TopBar::~TopBar() = default;
@@ -535,7 +622,13 @@ void TopBar::updateLayout() {
 	auto pingW = Px(12) + graphW
 		+ st::semiboldFont->width(u"000 "_q + Ms()) + Px(12);
 
-	const auto from = layout.account.x() + layout.account.width() + gap;
+	auto from = layout.account.x() + layout.account.width() + gap;
+	if (Extera::Streamer::Active()) {
+		const auto hideW = st::semiboldFont->width(
+			tr::lng_tristegram_hide_badge(tr::now)) + Px(20);
+		layout.hide = QRect(from, y + Px(6), hideW, h - Px(12));
+		from += hideW + gap;
+	}
 	const auto available = width() - from - Px(6);
 	auto withPing = showPing;
 	auto withClock = showClock;
@@ -570,6 +663,8 @@ void TopBar::updateLayout() {
 TopBar::Area TopBar::areaAt(QPoint point) const {
 	if (_layout.account.contains(point)) {
 		return Area::Account;
+	} else if (_layout.hide.contains(point)) {
+		return Area::Hide;
 	} else if (_layout.ping.contains(point)) {
 		return Area::Ping;
 	} else if (_layout.brand.contains(point)) {
@@ -624,7 +719,7 @@ void TopBar::paintBrand(QPainter &p, QRect rect) const {
 		rect.y() + (rect.height() - logoSize) / 2,
 		logoSize,
 		logoSize);
-	const auto logoStyle = CurrentLogoStyle();
+	const auto logoStyle = CurrentLogoStyle(crl::now());
 	PaintLogo(p, QRectF(logo), logoStyle, _spin.value(1.));
 
 	auto textGradient = QLinearGradient(
@@ -660,7 +755,7 @@ void TopBar::paintClock(QPainter &p, QRect rect) const {
 		rect.y() + (rect.height() - size) / 2,
 		size,
 		size);
-	const auto logoStyle = CurrentLogoStyle();
+	const auto logoStyle = CurrentLogoStyle(crl::now());
 	auto fill = QLinearGradient(badge.topLeft(), badge.bottomRight());
 	fill.setColorAt(0., logoStyle.from);
 	fill.setColorAt(1., logoStyle.to);
@@ -698,6 +793,9 @@ void TopBar::paintEvent(QPaintEvent *e) {
 		width(),
 		userpicSize);
 
+	if (!_layout.hide.isEmpty()) {
+		paintHide(p, _layout.hide);
+	}
 	if (!_layout.ping.isEmpty()) {
 		paintPing(p, _layout.ping);
 	}
@@ -741,6 +839,7 @@ void TopBar::mousePressEvent(QMouseEvent *e) {
 	}
 	switch (areaAt(e->pos())) {
 	case Area::Account: showAccountsMenu(); break;
+	case Area::Hide: Extera::Streamer::ShowMenu(_controller); break;
 	case Area::Brand: spinLogo(); showBrandMenu(); break;
 	case Area::Ping:
 		if (_panel && _panel->isVisible()) {
@@ -751,7 +850,7 @@ void TopBar::mousePressEvent(QMouseEvent *e) {
 		break;
 	case Area::Clock:
 		hidePanel();
-		_controller->showSettings(Settings::ExteraPluginsId());
+		showPluginsMenu();
 		break;
 	default: break;
 	}

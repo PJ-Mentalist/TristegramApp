@@ -33,6 +33,7 @@
 #include "extera/tristegram_logo.h"
 #include "extera/tristegram_folders.h"
 #include "extera/tristegram_fonts.h"
+#include "extera/tristegram_custom.h"
 #include "boxes/background_box.h"
 #include "settings/sections/settings_chat.h"
 #include "history/view/media/history_view_sticker.h"
@@ -3834,6 +3835,76 @@ void BuildMessages(SectionBuilder &builder) {
 	});
 }
 
+void AddActionChoice(
+		SectionBuilder &builder,
+		const QString &key,
+		const Phrase &title,
+		Fn<std::vector<QString>()> names,
+		Fn<void(not_null<Window::SessionController*>, int)> apply,
+		QStringList keywords = {}) {
+	const auto controller = builder.controller();
+	builder.addButton({
+		.id = u"extera/"_q + key,
+		.title = title(),
+		.st = &st::settingsButtonNoIcon,
+		.label = Config().intChanges(key) | rpl::map([=](int index) {
+			const auto list = names();
+			return (index >= 0 && index < int(list.size()))
+				? list[index]
+				: tr::lng_tristegram_not_chosen(tr::now);
+		}),
+		.onClick = [=] {
+			if (!controller) {
+				return;
+			}
+			controller->show(Box([=](not_null<Ui::GenericBox*> box) {
+				const auto list = names();
+				SingleChoiceBox(box, {
+					.title = title(),
+					.options = list,
+					.initialSelection = std::max(0, Extera::Int(key)),
+					.callback = [=](int index) {
+						Config().setInt(key, index);
+						apply(controller, index);
+					},
+				});
+			}));
+		},
+		.keywords = std::move(keywords),
+	});
+}
+
+void AddColorButton(
+		SectionBuilder &builder,
+		const QString &key,
+		const Phrase &title) {
+	const auto controller = builder.controller();
+	builder.addButton({
+		.id = u"extera/"_q + key,
+		.title = title(),
+		.st = &st::settingsButtonNoIcon,
+		.label = Config().stringChanges(key) | rpl::map([](QString value) {
+			return value.toUpper();
+		}),
+		.onClick = [=] {
+			if (!controller) {
+				return;
+			}
+			Tristegram::ChooseColor(
+				controller,
+				title(),
+				QColor(Extera::String(key)),
+				[=](QColor color) {
+					Config().setString(key, color.name(QColor::HexRgb));
+					Config().setInt(
+						u"tristegram_logo"_q,
+						Tristegram::LogoCustomIndex());
+				});
+		},
+		.keywords = { u"logo"_q, u"color"_q },
+	});
+}
+
 void PartTristegram(SectionBuilder &builder) {
 	builder.addSkip();
 	builder.addSubsectionTitle(tr::lng_tristegram_section());
@@ -3918,6 +3989,24 @@ void PartTristegram(SectionBuilder &builder) {
 	builder.addSubsectionTitle(tr::lng_tristegram_look_title());
 	builder.card([&] {
 		const auto controller = builder.controller();
+		AddActionChoice(
+			builder,
+			u"tristegram_theme_preset"_q,
+			tr::lng_tristegram_theme_pick,
+			[] { return Tristegram::ThemePresetNames(); },
+			[](not_null<Window::SessionController*> controller, int index) {
+				Tristegram::ApplyThemePreset(controller, index);
+			},
+			{ u"theme"_q, u"preset"_q });
+		AddActionChoice(
+			builder,
+			u"tristegram_bg_preset"_q,
+			tr::lng_tristegram_bg_pick,
+			[] { return Tristegram::BackgroundPresetNames(); },
+			[](not_null<Window::SessionController*> controller, int index) {
+				Tristegram::ApplyBackgroundPreset(controller, index);
+			},
+			{ u"background"_q, u"gradient"_q });
 		builder.addButton({
 			.id = u"extera/tristegram_chat_bg"_q,
 			.title = tr::lng_tristegram_chat_bg(),
@@ -3961,6 +4050,7 @@ void PartTristegram(SectionBuilder &builder) {
 				&tr::lng_tristegram_logo_p9,
 				&tr::lng_tristegram_logo_p10,
 				&tr::lng_tristegram_logo_p11,
+				&tr::lng_tristegram_logo_custom,
 			},
 			{ u"logo"_q, u"color"_q, u"gradient"_q },
 			[](QPainter &p, QRect rect, int index) {
@@ -3981,11 +4071,74 @@ void PartTristegram(SectionBuilder &builder) {
 			u"tristegram_logo_glow"_q,
 			tr::lng_tristegram_logo_glow(),
 			{ u"logo"_q, u"glow"_q });
+		AddColorButton(builder, u"tristegram_logo_c1"_q, tr::lng_tristegram_logo_c1);
+		AddColorButton(builder, u"tristegram_logo_c2"_q, tr::lng_tristegram_logo_c2);
+		AddValueChoice(
+			builder,
+			u"tristegram_logo_angle"_q,
+			tr::lng_tristegram_logo_angle,
+			{ 0, 45, 90, 135, 180, 225, 270, 315 },
+			[](int value) { return QString::number(value) + QChar(0x00B0); },
+			{ u"logo"_q, u"angle"_q });
+		AddToggle(
+			builder,
+			u"tristegram_logo_shift"_q,
+			tr::lng_tristegram_logo_shift(),
+			{ u"logo"_q, u"gradient"_q });
+	});
+	builder.addSkip();
+	builder.card([&] {
+		AddToggle(
+			builder,
+			u"tristegram_logo_glow"_q,
+			tr::lng_tristegram_logo_glow(),
+			{ u"logo"_q, u"glow"_q });
+		AddValueChoice(
+			builder,
+			u"tristegram_logo_glow_power"_q,
+			tr::lng_tristegram_logo_glow_power,
+			{ 20, 40, 60, 80, 100 },
+			[](int value) { return QString::number(value) + '%'; },
+			{ u"logo"_q, u"glow"_q });
+		AddToggle(
+			builder,
+			u"tristegram_logo_pulse"_q,
+			tr::lng_tristegram_logo_pulse(),
+			{ u"logo"_q, u"glow"_q, u"pulse"_q });
 		AddToggle(
 			builder,
 			u"tristegram_logo_anim"_q,
 			tr::lng_tristegram_logo_anim(),
 			{ u"logo"_q, u"animation"_q });
+		AddToggle(
+			builder,
+			u"tristegram_logo_intro"_q,
+			tr::lng_tristegram_logo_intro(),
+			{ u"logo"_q, u"animation"_q });
+		AddToggle(
+			builder,
+			u"tristegram_empty_logo"_q,
+			tr::lng_tristegram_empty_logo(),
+			{ u"logo"_q });
+	});
+	builder.addSkip();
+	builder.card([&] {
+		AddToggle(
+			builder,
+			u"tristegram_online_accent"_q,
+			tr::lng_tristegram_online_accent(),
+			{ u"online"_q, u"avatar"_q });
+		AddChoice(
+			builder,
+			u"tristegram_avatar_ring"_q,
+			tr::lng_tristegram_avatar_ring,
+			{
+				&tr::lng_tristegram_ring_none,
+				&tr::lng_tristegram_ring_thin,
+				&tr::lng_tristegram_ring_accent,
+				&tr::lng_tristegram_ring_gradient,
+			},
+			{ u"avatar"_q, u"frame"_q });
 	});
 }
 
