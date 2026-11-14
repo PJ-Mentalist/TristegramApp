@@ -279,9 +279,18 @@ index ebb7796..95c5329 100644
  boxButtonFont: font(boxFontSize semibold);
  defaultBoxButtonTextStyle: TextStyle(semiboldTextStyle) {
 diff --git a/ui/widgets/widgets.style b/ui/widgets/widgets.style
-index 8b8df7d..caf05f0 100644
+index 8b8df7d..9605cd5 100644
 --- a/ui/widgets/widgets.style
 +++ b/ui/widgets/widgets.style
+@@ -713,7 +713,7 @@ defaultRippleAnimationBgOver: RippleAnimation(defaultRippleAnimation) {
+ 	color: windowBgOver;
+ }
+ 
+-buttonRadius: 4px;
++buttonRadius: 10px;
+ 
+ defaultActiveButton: RoundButton {
+ 	textFg: activeButtonFg;
 @@ -992,7 +992,7 @@ defaultPopupMenu: PopupMenu {
  
  	menu: defaultMenu;
