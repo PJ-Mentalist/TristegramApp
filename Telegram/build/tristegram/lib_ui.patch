@@ -1,0 +1,39 @@
+diff --git a/ui/basic.style b/ui/basic.style
+index 28095c2..df87d67 100644
+--- a/ui/basic.style
++++ b/ui/basic.style
+@@ -104,7 +104,7 @@ linkCropLimit: 360px;
+ linkFont: normalFont;
+ linkFontOver: font(fsize underline);
+ 
+-roundRadiusLarge: 6px;
++roundRadiusLarge: 8px;
+ roundRadiusSmall: 3px;
+ 
+ dateRadius: roundRadiusLarge;
+diff --git a/ui/layers/layers.style b/ui/layers/layers.style
+index ebb7796..95c5329 100644
+--- a/ui/layers/layers.style
++++ b/ui/layers/layers.style
+@@ -35,7 +35,7 @@ Box {
+ }
+ 
+ boxDuration: 200;
+-boxRadius: 8px;
++boxRadius: 14px;
+ 
+ boxButtonFont: font(boxFontSize semibold);
+ defaultBoxButtonTextStyle: TextStyle(semiboldTextStyle) {
+diff --git a/ui/widgets/widgets.style b/ui/widgets/widgets.style
+index 8b8df7d..caf05f0 100644
+--- a/ui/widgets/widgets.style
++++ b/ui/widgets/widgets.style
+@@ -992,7 +992,7 @@ defaultPopupMenu: PopupMenu {
+ 
+ 	menu: defaultMenu;
+ 
+-	radius: 8px;
++	radius: 12px;
+ 	duration: 150;
+ 	showDuration: 200;
+ }

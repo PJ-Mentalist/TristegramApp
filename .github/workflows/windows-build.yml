@@ -49,6 +49,15 @@ jobs:
           submodules: recursive
           path: TBuild\tdesktop
 
+      - name: Tristegram patches
+        shell: bash
+        run: |
+          # Правки в lib_ui (скругления в стиле iOS) без отдельного форка библиотеки.
+          cd "$TBUILD/tdesktop"
+          if [ -f Telegram/build/tristegram/lib_ui.patch ]; then
+            git -C Telegram/lib_ui apply --whitespace=nowarn ../build/tristegram/lib_ui.patch
+          fi
+
       - name: First set up
         shell: bash
         run: |
