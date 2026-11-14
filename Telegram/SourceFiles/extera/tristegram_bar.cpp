@@ -25,6 +25,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "mtproto/mtp_instance.h"
 #include "settings/sections/settings_chat.h"
 #include "settings/sections/settings_extera.h"
+#include "settings/sections/settings_folders.h"
 #include "ui/painter.h"
 #include "ui/widgets/popup_menu.h"
 #include "window/window_controller.h"
@@ -989,6 +990,9 @@ void TopBar::showBrandMenu() {
 	_menu->addAction(tr::lng_tristegram_plugins(tr::now), [=] {
 		_controller->showSettings(Settings::ExteraPluginsId());
 	}, &st::menuIconCustomize);
+	_menu->addAction(tr::lng_tristegram_tabs_settings(tr::now), [=] {
+		_controller->showSettings(Settings::FoldersId());
+	}, &st::menuIconShowInFolder);
 	_menu->addAction(tr::lng_tristegram_whats_new(tr::now), [=] {
 		Extera::Changelog::Show(_controller);
 	}, &st::menuIconInfo);

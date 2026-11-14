@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "ui/widgets/chat_filters_tabs_slider.h"
 
+#include "ui/painter.h"
+
 #include "ui/effects/ripple_animation.h"
 #include "ui/widgets/side_bar_button.h"
 #include "styles/style_dialogs.h"
@@ -245,6 +247,27 @@ void ChatsFiltersTabs::paintEvent(QPaintEvent *e) {
 	const auto activeIndex = activeSection();
 	const auto now = crl::now();
 
+	// Tristegram: the active tab is a capsule that slides between tabs.
+	const auto capsule = _st.barSnapToLabel;
+	if (capsule && range.width > 0) {
+		const auto padX = style::ConvertScale(11);
+		const auto padY = style::ConvertScale(5);
+		const auto fontHeight = _st.labelStyle.font->height;
+		const auto top = std::max(_st.labelTop - padY, 0);
+		const auto bottom = std::min(
+			_st.labelTop + fontHeight + padY,
+			height());
+		const auto pill = QRectF(
+			range.left - padX,
+			top,
+			range.width + padX * 2,
+			bottom - top);
+		auto hq = PainterHighQualityEnabler(p);
+		p.setPen(Qt::NoPen);
+		p.setBrush(st::windowBgActive);
+		p.drawRoundedRect(pill, pill.height() / 2., pill.height() / 2.);
+	}
+
 	auto index = 0;
 	auto raisedIndex = -1;
 	auto activeHorizontalShift = 0;
@@ -299,7 +322,10 @@ void ChatsFiltersTabs::paintEvent(QPaintEvent *e) {
 				== ChatsFiltersTabsMode::IconsOnly)
 				? 0
 				: section.label.maxWidth();
-			p.setPen(anim::pen(_st.labelFg, _st.labelFgActive, active));
+			const auto &activeFg = capsule
+				? st::windowFgActive
+				: _st.labelFgActive;
+			p.setPen(anim::pen(_st.labelFg, activeFg, active));
 			if (icon) {
 				icon->paint(
 					p,
@@ -307,7 +333,7 @@ void ChatsFiltersTabs::paintEvent(QPaintEvent *e) {
 					_st.labelTop
 						+ (_st.labelStyle.font->height - icon->height()) / 2,
 					width(),
-					anim::color(_st.labelFg, _st.labelFgActive, active));
+					anim::color(_st.labelFg, activeFg, active));
 			}
 			if (labelWidth > 0) {
 				section.label.draw(p, {
@@ -351,7 +377,7 @@ void ChatsFiltersTabs::paintEvent(QPaintEvent *e) {
 		index = raisedIndex;
 		drawSection(*_sections[raisedIndex].section);
 	}
-	if (_st.barSnapToLabel) {
+	if (_st.barSnapToLabel && !capsule) {
 		const auto drawRect = [&](QRect rect, bool active) {
 			const auto &bar = active ? _barActive : _bar;
 			if (bar) {
