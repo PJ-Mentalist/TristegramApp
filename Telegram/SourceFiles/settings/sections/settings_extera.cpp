@@ -3877,7 +3877,8 @@ void AddActionChoice(
 void AddColorButton(
 		SectionBuilder &builder,
 		const QString &key,
-		const Phrase &title) {
+		const Phrase &title,
+		bool logo = true) {
 	const auto controller = builder.controller();
 	builder.addButton({
 		.id = u"extera/"_q + key,
@@ -3896,12 +3897,14 @@ void AddColorButton(
 				QColor(Extera::String(key)),
 				[=](QColor color) {
 					Config().setString(key, color.name(QColor::HexRgb));
-					Config().setInt(
-						u"tristegram_logo"_q,
-						Tristegram::LogoCustomIndex());
+					if (logo) {
+						Config().setInt(
+							u"tristegram_logo"_q,
+							Tristegram::LogoCustomIndex());
+					}
 				});
 		},
-		.keywords = { u"logo"_q, u"color"_q },
+		.keywords = { u"color"_q },
 	});
 }
 
@@ -4121,6 +4124,33 @@ void PartTristegram(SectionBuilder &builder) {
 			tr::lng_tristegram_empty_logo(),
 			{ u"logo"_q });
 	});
+	builder.addSkip();
+	builder.addSubsectionTitle(tr::lng_tristegram_bubbles_title());
+	builder.card([&] {
+		AddToggle(
+			builder,
+			u"tristegram_bubble_gradient"_q,
+			tr::lng_tristegram_bubble_gradient(),
+			{ u"bubble"_q, u"gradient"_q, u"message"_q });
+		AddColorButton(
+			builder,
+			u"tristegram_bubble_c1"_q,
+			tr::lng_tristegram_bubble_c1,
+			false);
+		AddColorButton(
+			builder,
+			u"tristegram_bubble_c2"_q,
+			tr::lng_tristegram_bubble_c2,
+			false);
+		AddValueChoice(
+			builder,
+			u"tristegram_bubble_radius"_q,
+			tr::lng_tristegram_bubble_radius,
+			{ 6, 10, 14, 18, 22, 26 },
+			[](int value) { return QString::number(value) + u" px"_q; },
+			{ u"bubble"_q, u"radius"_q, u"corner"_q });
+	});
+	AddAbout(builder, tr::lng_tristegram_bubbles_about());
 	builder.addSkip();
 	builder.card([&] {
 		AddToggle(

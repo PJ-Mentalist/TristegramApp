@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "window/window_session_controller.h"
 
+#include "extera/extera_config.h"
+
 #include "apiwrap.h"
 #include "api/api_cloud_password.h"
 #include "api/api_text_entities.h"
@@ -1762,6 +1764,34 @@ SessionController::SessionController(
 	_chatStyle->apply(_defaultChatTheme.get());
 
 	pushDefaultChatBackground();
+
+	// Tristegram: gradient for my message bubbles.
+	const auto applyBubblesGradient = [=] {
+		if (Extera::Bool(u"tristegram_bubble_gradient"_q)) {
+			auto from = QColor(Extera::String(u"tristegram_bubble_c1"_q));
+			auto to = QColor(Extera::String(u"tristegram_bubble_c2"_q));
+			if (!from.isValid()) {
+				from = st::windowBgActive->c;
+			}
+			if (!to.isValid()) {
+				to = from;
+			}
+			auto data = Ui::ChatThemeBubblesData();
+			data.colors = { from, to };
+			_defaultChatTheme->setBubblesBackground(
+				Ui::PrepareBubblesBackground(data));
+		} else {
+			_defaultChatTheme->setBubblesBackground(QImage());
+		}
+		widget()->update();
+	};
+	applyBubblesGradient();
+	Extera::Config::Instance().changes(
+	) | rpl::filter([](const QString &key) {
+		return key.startsWith(u"tristegram_bubble_"_q);
+	}) | rpl::on_next([=] {
+		applyBubblesGradient();
+	}, _lifetime);
 	Theme::Background()->updates(
 	) | rpl::on_next([=](const Theme::BackgroundUpdate &update) {
 		if (update.type == Theme::BackgroundUpdate::Type::New

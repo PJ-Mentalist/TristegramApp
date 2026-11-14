@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "core/application.h"
 
 #include "extera/tristegram_fonts.h"
+#include "styles/style_chat.h"
 #include "data/data_forum_topic.h"
 #include "ui/emoji_config.h"
 #include "extera/extera_update.h"
@@ -594,6 +595,11 @@ void Application::run() {
 	QCoreApplication::instance()->installTranslator(_translator.get());
 
 	style::StartManager(cScale());
+	if (const auto radius = Extera::Int(u"tristegram_bubble_radius"_q)
+		; radius > 0) {
+		// Tristegram: bubble corner radius chosen in settings.
+		const_cast<int&>(st::bubbleRadiusLarge) = style::ConvertScale(radius);
+	}
 	Ui::Accessible::Init();
 	Ui::InitTextOptions();
 	Ui::StartCachedCorners();

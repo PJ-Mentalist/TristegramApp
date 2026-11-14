@@ -10137,6 +10137,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_tristegram_plugins_all" = "All plugins and settings";
 "lng_tristegram_plugins_none" = "No plugins installed";
 "lng_tristegram_tabs_settings" = "Tabs and folders";
+"lng_tristegram_bubbles_title" = "My messages";
+"lng_tristegram_bubble_gradient" = "Gradient in my messages";
+"lng_tristegram_bubble_c1" = "First message color";
+"lng_tristegram_bubble_c2" = "Second message color";
+"lng_tristegram_bubble_radius" = "Bubble corner radius";
+"lng_tristegram_bubbles_about" = "The gradient applies right away. The corner radius applies after a restart.";
 "lng_tristegram_private_avatars" = "Avatars in private chats";
 "lng_tristegram_section" = "Tristegram";
 "lng_tristegram_top_bar" = "Tristegram bar above chats";
