@@ -60,6 +60,27 @@ struct ThemePreset {
 
 } // namespace
 
+QColor ThemePresetAccent(int index) {
+	const auto &presets = ThemePresets();
+	return (index >= 0 && index < int(presets.size()))
+		? presets[index].accent
+		: QColor();
+}
+
+bool ThemePresetNight(int index) {
+	const auto &presets = ThemePresets();
+	return (index >= 0 && index < int(presets.size()))
+		&& (presets[index].type != EmbeddedType::Default)
+		&& (presets[index].type != EmbeddedType::DayBlue);
+}
+
+std::vector<QColor> BackgroundPresetColors(int index) {
+	const auto &presets = BackgroundPresets();
+	return (index >= 0 && index < int(presets.size()))
+		? presets[index]
+		: std::vector<QColor>();
+}
+
 std::vector<QString> ThemePresetNames() {
 	return {
 		u"Tristegram"_q,

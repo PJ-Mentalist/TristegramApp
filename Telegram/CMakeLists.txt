@@ -2007,6 +2007,8 @@ PRIVATE
     extera/tristegram_fonts.h
     extera/tristegram_custom.cpp
     extera/tristegram_custom.h
+    extera/tristegram_custom_ui.cpp
+    extera/tristegram_custom_ui.h
     extera/extera_plugins.cpp
     extera/extera_plugins.h
     extera/extera_plugins_ui.cpp

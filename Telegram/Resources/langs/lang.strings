@@ -10143,6 +10143,15 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_tristegram_bubble_c2" = "Second message color";
 "lng_tristegram_bubble_radius" = "Bubble corner radius";
 "lng_tristegram_bubbles_about" = "The gradient applies right away. The corner radius applies after a restart.";
+"lng_tristegram_version" = "Tristegram 1.0 · independent client";
+"lng_tristegram_based_on" = "Source base: exDesktop";
+"lng_tristegram_preview_in" = "How do you like it?";
+"lng_tristegram_preview_out" = "Looks amazing 🔥";
+"lng_tristegram_custom_title" = "Customization";
+"lng_tristegram_logo_title" = "Logo";
+"lng_tristegram_themes_title" = "Themes";
+"lng_tristegram_bgs_title" = "Chat background";
+"lng_tristegram_preview_tap" = "Tap the logo to play the animation";
 "lng_tristegram_private_avatars" = "Avatars in private chats";
 "lng_tristegram_section" = "Tristegram";
 "lng_tristegram_top_bar" = "Tristegram bar above chats";

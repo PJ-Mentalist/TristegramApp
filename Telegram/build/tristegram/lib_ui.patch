@@ -455,6 +455,48 @@ index 4c16b67..436df33 100644
  	}
  	if (const auto icon = (selected ? _iconOver : _icon)) {
  		icon->paint(p, _st.itemIconPosition, width());
+diff --git a/ui/widgets/popup_menu.cpp b/ui/widgets/popup_menu.cpp
+index 8a2ffc7..ff1e3a4 100644
+--- a/ui/widgets/popup_menu.cpp
++++ b/ui/widgets/popup_menu.cpp
+@@ -6,6 +6,8 @@
+ //
+ #include "ui/widgets/popup_menu.h"
+ 
++#include <QtGui/QPainterPath>
++
+ #include "base/platform/base_platform_info.h"
+ #include "base/invoke_queued.h"
+ #include "base/weak_qptr.h"
+@@ -265,6 +267,28 @@ void PopupMenu::updateRoundingOverlay() {
+ 		auto hq = PainterHighQualityEnabler(p);
+ 		p.setCompositionMode(QPainter::CompositionMode_DestinationIn);
+ 		_roundRect.paint(p, _inner, RectPart::AllCorners);
++		{
++			// Tristegram: glass look, a soft sheen and a thin light rim.
++			p.setCompositionMode(QPainter::CompositionMode_SourceOver);
++			const auto radius = double(_st.radius);
++			auto shape = QPainterPath();
++			shape.addRoundedRect(QRectF(_inner), radius, radius);
++			p.save();
++			p.setClipPath(shape);
++			auto sheen = QLinearGradient(
++				QPointF(0, _inner.y()),
++				QPointF(0, _inner.y() + _inner.height() * 0.45));
++			sheen.setColorAt(0., QColor(255, 255, 255, 22));
++			sheen.setColorAt(1., QColor(255, 255, 255, 0));
++			p.fillRect(_inner, sheen);
++			p.restore();
++			p.setPen(QPen(QColor(255, 255, 255, 30), 1.));
++			p.setBrush(Qt::NoBrush);
++			p.drawRoundedRect(
++				QRectF(_inner).marginsRemoved(QMarginsF(0.5, 0.5, 0.5, 0.5)),
++				radius - 0.5,
++				radius - 0.5);
++		}
+ 		if (!_grabbingForPanelAnimation) {
+ 			p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+ 			_boxShadow.paint(p, _inner, _st.radius);
 diff --git a/ui/widgets/widgets.style b/ui/widgets/widgets.style
 index 8b8df7d..d1ec8c0 100644
 --- a/ui/widgets/widgets.style

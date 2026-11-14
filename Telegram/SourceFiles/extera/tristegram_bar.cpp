@@ -617,7 +617,7 @@ void TopBar::updateLayout() {
 	const auto graphW = Px(40) + Px(6);
 
 	const auto brandW = Px(6) + Px(26) + Px(8)
-		+ st::semiboldFont->width(u"Tristegram"_q) + Px(12);
+		+ st::semiboldFont->width(u"Tristegram"_q) + Px(14);
 	const auto clockW = st::semiboldFont->width(u"00:00:00"_q)
 		+ Px(14) + Px(8) + Px(26) + Px(5);
 	auto pingW = Px(12) + graphW
@@ -711,8 +711,29 @@ void TopBar::paintPing(QPainter &p, QRect rect) const {
 }
 
 void TopBar::paintBrand(QPainter &p, QRect rect) const {
-	if (_over == Area::Brand) {
-		paintPill(p, rect, false);
+	{
+		// Brand capsule tinted with the logo colors, like in the prototype.
+		const auto tint = CurrentLogoStyle();
+		auto from = tint.from;
+		auto to = tint.to;
+		const auto alpha = (_over == Area::Brand) ? 0.22 : 0.13;
+		from.setAlphaF(alpha);
+		to.setAlphaF(alpha);
+		auto fill = QLinearGradient(rect.topLeft(), rect.topRight());
+		fill.setColorAt(0., from);
+		fill.setColorAt(1., to);
+		const auto radius = rect.height() / 2.;
+		p.setPen(Qt::NoPen);
+		p.setBrush(fill);
+		p.drawRoundedRect(rect, radius, radius);
+		auto border = tint.from;
+		border.setAlphaF(0.35);
+		p.setPen(QPen(border, 1.));
+		p.setBrush(Qt::NoBrush);
+		p.drawRoundedRect(
+			QRectF(rect).marginsRemoved(QMarginsF(0.5, 0.5, 0.5, 0.5)),
+			radius - 0.5,
+			radius - 0.5);
 	}
 	const auto logoSize = Px(26);
 	const auto logo = QRect(

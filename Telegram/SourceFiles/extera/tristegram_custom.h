@@ -17,7 +17,11 @@ void ApplyThemePreset(
 	not_null<Window::SessionController*> controller,
 	int index);
 
+[[nodiscard]] QColor ThemePresetAccent(int index);
+[[nodiscard]] bool ThemePresetNight(int index);
+
 // Animated four-color gradient chat backgrounds.
+[[nodiscard]] std::vector<QColor> BackgroundPresetColors(int index);
 [[nodiscard]] std::vector<QString> BackgroundPresetNames();
 void ApplyBackgroundPreset(
 	not_null<Window::SessionController*> controller,

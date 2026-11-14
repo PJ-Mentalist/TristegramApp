@@ -34,6 +34,7 @@
 #include "extera/tristegram_folders.h"
 #include "extera/tristegram_fonts.h"
 #include "extera/tristegram_custom.h"
+#include "extera/tristegram_custom_ui.h"
 #include "boxes/background_box.h"
 #include "settings/sections/settings_chat.h"
 #include "history/view/media/history_view_sticker.h"
@@ -1318,17 +1319,52 @@ void AddHeader(SectionBuilder &builder) {
 			auto result = object_ptr<Ui::VerticalLayout>(container);
 			const auto raw = result.data();
 			const auto size = st::exteraHeaderLogoSize;
+			const auto glow = size / 4;
 			const auto logo = raw->add(
-				object_ptr<Ui::FixedHeightWidget>(raw, size),
+				object_ptr<Ui::FixedHeightWidget>(raw, size + glow * 2),
 				st::exteraHeaderLogoPadding);
+			struct State {
+				Ui::Animations::Simple spin;
+				base::Timer ambient;
+			};
+			const auto state = logo->lifetime().make_state<State>();
+			state->ambient.setCallback([=] { logo->update(); });
+			const auto refreshAmbient = [=] {
+				if (Tristegram::LogoAmbientAnimated()) {
+					if (!state->ambient.isActive()) {
+						state->ambient.callEach(40);
+					}
+				} else {
+					state->ambient.cancel();
+				}
+			};
+			refreshAmbient();
+			Config().changes(
+			) | rpl::filter([](const QString &key) {
+				return key.startsWith(u"tristegram_"_q);
+			}) | rpl::on_next([=] {
+				refreshAmbient();
+				logo->update();
+			}, logo->lifetime());
+			logo->setCursor(style::cur_pointer);
+			logo->events(
+			) | rpl::filter([](not_null<QEvent*> e) {
+				return (e->type() == QEvent::MouseButtonPress);
+			}) | rpl::on_next([=] {
+				if (!state->spin.animating()) {
+					state->spin.start([=] { logo->update(); }, 0., 1., 900);
+				}
+			}, logo->lifetime());
 			logo->paintRequest(
 			) | rpl::on_next([=] {
 				auto p = QPainter(logo);
 				auto hq = PainterHighQualityEnabler(p);
 				const auto left = (logo->width() - size) / 2;
-				p.drawImage(
-					QRect(left, 0, size, size),
-					Window::Logo());
+				Tristegram::PaintLogo(
+					p,
+					QRectF(left, glow, size, size),
+					Tristegram::CurrentLogoStyle(crl::now()),
+					state->spin.value(1.));
 			}, logo->lifetime());
 			raw->add(
 				object_ptr<Ui::FlatLabel>(
@@ -1340,7 +1376,16 @@ void AddHeader(SectionBuilder &builder) {
 			raw->add(
 				object_ptr<Ui::FlatLabel>(
 					raw,
-					rpl::single(Extera::Update::VersionText()),
+					tr::lng_tristegram_version(),
+					st::exteraHeaderVersion),
+				st::exteraHeaderVersionPadding,
+				style::al_top);
+			raw->add(
+				object_ptr<Ui::FlatLabel>(
+					raw,
+					rpl::single(tr::lng_tristegram_based_on(tr::now)
+						+ ' '
+						+ Extera::Update::VersionText()),
 					st::exteraHeaderVersion),
 				st::exteraHeaderVersionPadding,
 				style::al_top);
@@ -3908,7 +3953,138 @@ void AddColorButton(
 	});
 }
 
+void AddTristegramGrid(
+		SectionBuilder &builder,
+		Tristegram::TileGridDescriptor descriptor) {
+	builder.addControl({
+		.factory = [=](not_null<Ui::VerticalLayout*> container) mutable {
+			return Tristegram::CreateTileGrid(container, std::move(descriptor));
+		},
+	});
+}
+
+void PartTristegramLook(SectionBuilder &builder) {
+	const auto controller = builder.controller();
+	builder.addSkip();
+	builder.addSubsectionTitle(tr::lng_tristegram_custom_title());
+	builder.addControl({
+		.factory = [=](not_null<Ui::VerticalLayout*> container) {
+			return Tristegram::CreateLivePreview(container);
+		},
+	});
+	AddAbout(builder, tr::lng_tristegram_preview_tap());
+
+	builder.addSkip();
+	builder.addSubsectionTitle(tr::lng_tristegram_logo_title());
+	AddTristegramGrid(builder, {
+		.count = Tristegram::LogoPresetsCount() + 1,
+		.name = [](int index) {
+			static const auto names = std::vector<const Phrase*>{
+				&tr::lng_tristegram_logo_p0,
+				&tr::lng_tristegram_logo_p1,
+				&tr::lng_tristegram_logo_p2,
+				&tr::lng_tristegram_logo_p3,
+				&tr::lng_tristegram_logo_p4,
+				&tr::lng_tristegram_logo_p5,
+				&tr::lng_tristegram_logo_p6,
+				&tr::lng_tristegram_logo_p7,
+				&tr::lng_tristegram_logo_p8,
+				&tr::lng_tristegram_logo_p9,
+				&tr::lng_tristegram_logo_p10,
+				&tr::lng_tristegram_logo_p11,
+				&tr::lng_tristegram_logo_custom,
+			};
+			return (index >= 0 && index < int(names.size()))
+				? (*names[index])(tr::now)
+				: QString();
+		},
+		.paintSwatch = [](QPainter &p, QRect rect, int index) {
+			auto style = Tristegram::LogoPreset(index);
+			style.glow = false;
+			Tristegram::PaintLogo(p, QRectF(rect), style);
+		},
+		.selected = [] { return Extera::Int(u"tristegram_logo"_q); },
+		.chosen = [](int index) {
+			Config().setInt(u"tristegram_logo"_q, index);
+		},
+		.configKey = u"tristegram_logo"_q,
+	});
+
+	builder.addSkip();
+	builder.addSubsectionTitle(tr::lng_tristegram_themes_title());
+	AddTristegramGrid(builder, {
+		.count = int(Tristegram::ThemePresetNames().size()),
+		.name = [](int index) {
+			const auto names = Tristegram::ThemePresetNames();
+			return (index >= 0 && index < int(names.size()))
+				? names[index]
+				: QString();
+		},
+		.paintSwatch = [](QPainter &p, QRect rect, int index) {
+			const auto accent = Tristegram::ThemePresetAccent(index);
+			const auto night = Tristegram::ThemePresetNight(index);
+			auto fill = QLinearGradient(rect.topLeft(), rect.bottomRight());
+			fill.setColorAt(0., night ? QColor(0x1C, 0x1C, 0x22) : QColor(0xF4, 0xF4, 0xF6));
+			fill.setColorAt(1., night ? QColor(0x2C, 0x2C, 0x34) : QColor(0xE2, 0xE2, 0xE8));
+			p.setPen(Qt::NoPen);
+			p.setBrush(fill);
+			p.drawEllipse(rect);
+			const auto dot = QRectF(rect).marginsRemoved(QMarginsF(
+				rect.width() * 0.28,
+				rect.height() * 0.28,
+				rect.width() * 0.28,
+				rect.height() * 0.28));
+			p.setBrush(accent);
+			p.drawEllipse(dot);
+		},
+		.selected = [] { return Extera::Int(u"tristegram_theme_preset"_q); },
+		.chosen = [=](int index) {
+			Config().setInt(u"tristegram_theme_preset"_q, index);
+			if (controller) {
+				Tristegram::ApplyThemePreset(controller, index);
+			}
+		},
+		.configKey = u"tristegram_theme_preset"_q,
+	});
+
+	builder.addSkip();
+	builder.addSubsectionTitle(tr::lng_tristegram_bgs_title());
+	AddTristegramGrid(builder, {
+		.count = int(Tristegram::BackgroundPresetNames().size()),
+		.name = [](int index) {
+			const auto names = Tristegram::BackgroundPresetNames();
+			return (index >= 0 && index < int(names.size()))
+				? names[index]
+				: QString();
+		},
+		.paintSwatch = [](QPainter &p, QRect rect, int index) {
+			const auto colors = Tristegram::BackgroundPresetColors(index);
+			if (colors.empty()) {
+				return;
+			}
+			auto fill = QLinearGradient(rect.topLeft(), rect.bottomRight());
+			for (auto i = 0; i != int(colors.size()); ++i) {
+				fill.setColorAt(
+					(colors.size() > 1) ? (i / double(colors.size() - 1)) : 0.,
+					colors[i]);
+			}
+			p.setPen(Qt::NoPen);
+			p.setBrush(fill);
+			p.drawEllipse(rect);
+		},
+		.selected = [] { return Extera::Int(u"tristegram_bg_preset"_q); },
+		.chosen = [=](int index) {
+			Config().setInt(u"tristegram_bg_preset"_q, index);
+			if (controller) {
+				Tristegram::ApplyBackgroundPreset(controller, index);
+			}
+		},
+		.configKey = u"tristegram_bg_preset"_q,
+	});
+}
+
 void PartTristegram(SectionBuilder &builder) {
+	PartTristegramLook(builder);
 	builder.addSkip();
 	builder.addSubsectionTitle(tr::lng_tristegram_section());
 	builder.card([&] {
@@ -3992,24 +4168,6 @@ void PartTristegram(SectionBuilder &builder) {
 	builder.addSubsectionTitle(tr::lng_tristegram_look_title());
 	builder.card([&] {
 		const auto controller = builder.controller();
-		AddActionChoice(
-			builder,
-			u"tristegram_theme_preset"_q,
-			tr::lng_tristegram_theme_pick,
-			[] { return Tristegram::ThemePresetNames(); },
-			[](not_null<Window::SessionController*> controller, int index) {
-				Tristegram::ApplyThemePreset(controller, index);
-			},
-			{ u"theme"_q, u"preset"_q });
-		AddActionChoice(
-			builder,
-			u"tristegram_bg_preset"_q,
-			tr::lng_tristegram_bg_pick,
-			[] { return Tristegram::BackgroundPresetNames(); },
-			[](not_null<Window::SessionController*> controller, int index) {
-				Tristegram::ApplyBackgroundPreset(controller, index);
-			},
-			{ u"background"_q, u"gradient"_q });
 		builder.addButton({
 			.id = u"extera/tristegram_chat_bg"_q,
 			.title = tr::lng_tristegram_chat_bg(),
@@ -4036,44 +4194,6 @@ void PartTristegram(SectionBuilder &builder) {
 	AddAbout(builder, tr::lng_tristegram_look_about());
 	builder.addSkip();
 	builder.card([&] {
-		AddChoice(
-			builder,
-			u"tristegram_logo"_q,
-			tr::lng_tristegram_logo_color,
-			{
-				&tr::lng_tristegram_logo_p0,
-				&tr::lng_tristegram_logo_p1,
-				&tr::lng_tristegram_logo_p2,
-				&tr::lng_tristegram_logo_p3,
-				&tr::lng_tristegram_logo_p4,
-				&tr::lng_tristegram_logo_p5,
-				&tr::lng_tristegram_logo_p6,
-				&tr::lng_tristegram_logo_p7,
-				&tr::lng_tristegram_logo_p8,
-				&tr::lng_tristegram_logo_p9,
-				&tr::lng_tristegram_logo_p10,
-				&tr::lng_tristegram_logo_p11,
-				&tr::lng_tristegram_logo_custom,
-			},
-			{ u"logo"_q, u"color"_q, u"gradient"_q },
-			[](QPainter &p, QRect rect, int index) {
-				const auto size = std::min(rect.height() - 4, rect.width());
-				auto style = Tristegram::LogoPreset(index);
-				style.glow = false;
-				Tristegram::PaintLogo(
-					p,
-					QRectF(
-						rect.x() + rect.width() - size,
-						rect.y() + (rect.height() - size) / 2.,
-						size,
-						size),
-					style);
-			});
-		AddToggle(
-			builder,
-			u"tristegram_logo_glow"_q,
-			tr::lng_tristegram_logo_glow(),
-			{ u"logo"_q, u"glow"_q });
 		AddColorButton(builder, u"tristegram_logo_c1"_q, tr::lng_tristegram_logo_c1);
 		AddColorButton(builder, u"tristegram_logo_c2"_q, tr::lng_tristegram_logo_c2);
 		AddValueChoice(
@@ -4954,17 +5074,6 @@ void ShowExteraBadgeBox(
 				[=] {
 					box->closeBox();
 					ShowBadgeEditBox(controller);
-				});
-		} else if (!own) {
-			add(
-				(supporter
-					? tr::lng_exd_badge_invite_support()
-					: tr::lng_exd_badge_invite_get()),
-				st::exteraInstallButton,
-				st::exteraInstallButtonMargin,
-				[=] {
-					box->closeBox();
-					UrlClickHandler::Open(u"tg://support"_q);
 				});
 		}
 		add(

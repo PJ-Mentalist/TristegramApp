@@ -95,6 +95,7 @@ constexpr auto kSaveDelay = crl::time(1000);
 		{ u"tristegram_bubble_c1"_q, u"#F07A0C"_q },
 		{ u"tristegram_bubble_c2"_q, u"#FF375F"_q },
 		{ u"tristegram_bubble_radius"_q, 18 },
+		{ u"tristegram_header_avatar"_q, true },
 		{ u"folder_title_style"_q, 0 },
 		{ u"folder_counter"_q, 0 },
 		{ u"hide_all_chats"_q, false },

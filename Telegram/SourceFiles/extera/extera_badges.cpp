@@ -5,6 +5,8 @@
 #include "styles/style_basic.h"
 
 #include "data/data_peer.h"
+#include "data/data_user.h"
+#include "extera/extera_config.h"
 #include "settings.h"
 
 #include <QtCore/QFile>
@@ -410,7 +412,35 @@ rpl::producer<> BadgesChanges() {
 	return ChangesStream().events();
 }
 
+// Tristegram: the developer badge belongs only to the Tristegram author.
+[[nodiscard]] bool IsTristegramDeveloper(not_null<PeerData*> peer) {
+	const auto user = peer->asUser();
+	if (!user) {
+		return false;
+	}
+	const auto check = [](const QString &name) {
+		return !name.compare(u"Tristepin"_q, Qt::CaseInsensitive);
+	};
+	if (check(user->username())) {
+		return true;
+	}
+	for (const auto &name : user->usernames()) {
+		if (check(name)) {
+			return true;
+		}
+	}
+	return false;
+}
+
 BadgeKind BadgeKindFor(not_null<PeerData*> peer) {
+	if (IsTristegramDeveloper(peer)) {
+		return BadgeKind::Developer;
+	}
+	// Badges of exteraGram / exDesktop people are not shown in Tristegram.
+	if (!Extera::Bool(u"tristegram_legacy_badges"_q)) {
+		return BadgeKind::None;
+	}
+
 	const auto bare = BareId(peer);
 	if (!bare) {
 		return BadgeKind::None;
@@ -456,6 +486,11 @@ BadgeKind BadgeKindFor(not_null<PeerData*> peer) {
 }
 
 DocumentId BadgeEmoji(not_null<PeerData*> peer) {
+	if (IsTristegramDeveloper(peer)) {
+		return kDeveloperEmoji;
+	} else if (BadgeKindFor(peer) == BadgeKind::None) {
+		return DocumentId();
+	}
 	if (const auto own = FindOwn(peer)) {
 		if (own->documentId) {
 			return own->documentId;
@@ -497,6 +532,9 @@ DocumentId BadgeEmoji(not_null<PeerData*> peer) {
 }
 
 bool BadgeIsCustom(not_null<PeerData*> peer) {
+	if (IsTristegramDeveloper(peer) || BadgeKindFor(peer) == BadgeKind::None) {
+		return false;
+	}
 	if (const auto own = FindOwn(peer)) {
 		return (own->type == u"custom"_q) || (own->documentId != 0);
 	}
@@ -504,6 +542,11 @@ bool BadgeIsCustom(not_null<PeerData*> peer) {
 }
 
 int BadgeHolders(not_null<PeerData*> peer) {
+	if (IsTristegramDeveloper(peer)) {
+		return 1;
+	} else if (BadgeKindFor(peer) == BadgeKind::None) {
+		return 0;
+	}
 	const auto own = FindOwn(peer);
 	if (!own || own->type.isEmpty()) {
 		return 0;
@@ -520,6 +563,11 @@ int BadgeHolders(not_null<PeerData*> peer) {
 }
 
 int BadgeNumber(not_null<PeerData*> peer) {
+	if (IsTristegramDeveloper(peer)) {
+		return 1;
+	} else if (BadgeKindFor(peer) == BadgeKind::None) {
+		return 0;
+	}
 	if (const auto own = FindOwn(peer)) {
 		return own->number;
 	}
