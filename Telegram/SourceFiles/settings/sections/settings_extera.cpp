@@ -31,6 +31,7 @@
 #include "info/profile/info_profile_emoji_status_panel.h"
 #include "extera/extera_menu.h"
 #include "extera/tristegram_logo.h"
+#include "extera/tristegram_folders.h"
 #include "history/view/media/history_view_sticker.h"
 #include "ui/filter_icons.h"
 #include "extera/extera_navigation.h"
@@ -3866,6 +3867,22 @@ void PartTristegram(SectionBuilder &builder) {
 			{ u"clock"_q, u"plugins"_q });
 	});
 	AddAbout(builder, tr::lng_tristegram_section_about());
+	builder.addSkip();
+	builder.card([&] {
+		const auto controller = builder.controller();
+		builder.addButton({
+			.id = u"extera/tristegram_tabs"_q,
+			.title = tr::lng_tristegram_tabs_create(),
+			.st = &st::settingsButtonNoIcon,
+			.onClick = [=] {
+				if (controller) {
+					Tristegram::CreateTypeTabs(controller);
+				}
+			},
+			.keywords = { u"tabs"_q, u"folders"_q, u"bots"_q },
+		});
+	});
+	AddAbout(builder, tr::lng_tristegram_tabs_about());
 	builder.addSkip();
 	builder.card([&] {
 		AddChoice(

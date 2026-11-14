@@ -10086,6 +10086,15 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_tristegram_dc_singapore" = "Singapore";
 "lng_tristegram_plugins" = "Plugins";
 "lng_tristegram_bar_clock" = "Clock (opens plugins)";
+"lng_tristegram_tabs_create" = "Create tabs: Private, Groups, Channels, Bots";
+"lng_tristegram_tabs_about" = "Tabs are regular Telegram folders, so they also appear on your phone. To show them above the chat list, choose the top position in Settings › Folders.";
+"lng_tristegram_tabs_done" = "Tabs created";
+"lng_tristegram_tabs_failed" = "Could not create some tabs. Telegram allows up to 10 folders without Premium.";
+"lng_tristegram_tabs_exist" = "These tabs already exist";
+"lng_tristegram_tab_private" = "Private";
+"lng_tristegram_tab_groups" = "Groups";
+"lng_tristegram_tab_channels" = "Channels";
+"lng_tristegram_tab_bots" = "Bots";
 "lng_tristegram_private_avatars" = "Avatars in private chats";
 "lng_tristegram_section" = "Tristegram";
 "lng_tristegram_top_bar" = "Tristegram bar above chats";
