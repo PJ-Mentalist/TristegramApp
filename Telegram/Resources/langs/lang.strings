@@ -10052,6 +10052,13 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_extera_details_size" = "Size";
 "lng_tristegram_details_received" = "Received here";
 "lng_tristegram_private_avatars" = "Avatars in private chats";
+"lng_tristegram_section" = "Tristegram";
+"lng_tristegram_top_bar" = "Tristegram bar above chats";
+"lng_tristegram_eco" = "Eco mode";
+"lng_tristegram_section_about" = "The Tristegram bar shows your account, the Tristegram menu, the clock and the ping to Telegram. Turning it on or off applies after a restart. Eco mode turns off animations and effects to save battery and CPU.";
+"lng_tristegram_settings" = "Tristegram settings";
+"lng_tristegram_themes" = "Themes and colors";
+"lng_tristegram_whats_new" = "What's new";
 "lng_extera_translate_about" = "The Translate button appears in the message context menu.";
 "lng_extera_provider_telegram" = "Telegram";
 "lng_extera_provider_google" = "Google";

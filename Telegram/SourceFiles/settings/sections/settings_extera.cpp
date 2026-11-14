@@ -1851,10 +1851,6 @@ void PartAppearance1(SectionBuilder &builder) {
 			builder,
 			u"sender_mini_avatars"_q,
 			tr::lng_extera_mini_avatars());
-		AddToggle(
-			builder,
-			u"tristegram_private_avatars"_q,
-			tr::lng_tristegram_private_avatars());
 	});
 	AddAbout(builder, tr::lng_extera_chat_list_about());
 }
@@ -3833,6 +3829,29 @@ void BuildMessages(SectionBuilder &builder) {
 	});
 }
 
+void PartTristegram(SectionBuilder &builder) {
+	builder.addSkip();
+	builder.addSubsectionTitle(tr::lng_tristegram_section());
+	builder.card([&] {
+		AddToggle(
+			builder,
+			u"tristegram_top_bar"_q,
+			tr::lng_tristegram_top_bar(),
+			{ u"tristegram"_q, u"clock"_q, u"ping"_q, u"account"_q });
+		AddToggle(
+			builder,
+			u"tristegram_private_avatars"_q,
+			tr::lng_tristegram_private_avatars(),
+			{ u"avatar"_q, u"userpic"_q });
+		AddToggle(
+			builder,
+			u"tristegram_eco"_q,
+			tr::lng_tristegram_eco(),
+			{ u"eco"_q, u"battery"_q, u"animation"_q });
+	});
+	AddAbout(builder, tr::lng_tristegram_section_about());
+}
+
 void PartPremium(SectionBuilder &builder);
 
 void BuildAppearance(SectionBuilder &builder) {
@@ -3840,6 +3859,7 @@ void BuildAppearance(SectionBuilder &builder) {
 		ExteraAppearanceId(),
 		ExteraNavigationId(),
 	}, [&] {
+		PartTristegram(builder);
 		PartAppearance0(builder);
 		PartAppearance1(builder);
 		PartAppearance2(builder);

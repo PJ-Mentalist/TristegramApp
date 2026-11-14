@@ -34,6 +34,10 @@ namespace Main {
 class Session;
 } // namespace Main
 
+namespace Tristegram {
+class TopBar;
+} // namespace Tristegram
+
 namespace HistoryView {
 class TopBarWidget;
 class ContactStatus;
@@ -343,6 +347,7 @@ private:
 
 	std::unique_ptr<Ui::AbstractButton> _frozenAccountBar;
 
+	object_ptr<Tristegram::TopBar> _tristegramBar = { nullptr };
 	object_ptr<Ui::RpWidget> _searchControls;
 	object_ptr<HistoryView::TopBarWidget> _subsectionTopBar = { nullptr };
 	struct {

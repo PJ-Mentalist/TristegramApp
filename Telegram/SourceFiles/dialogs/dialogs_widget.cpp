@@ -12,6 +12,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "extera/extera_update.h"
 
 #include "extera/extera_config.h"
+#include "extera/tristegram_bar.h"
 
 #include "base/call_delayed.h"
 #include "base/qt/qt_key_modifiers.h"
@@ -280,6 +281,10 @@ Widget::Widget(
 	const auto makeChildListShown = [](PeerId peerId, float64 shown) {
 		return InnerWidget::ChildListShown{ peerId, shown };
 	};
+	if (_layout == Layout::Main
+		&& Extera::Bool(u"tristegram_top_bar"_q)) {
+		_tristegramBar.create(this, controller);
+	}
 	using OverscrollType = Ui::ElasticScroll::OverscrollType;
 	_scroll->setOverscrollTypes(
 		_stories ? OverscrollType::Virtual : OverscrollType::Real,
@@ -4592,6 +4597,15 @@ void Widget::updateControlsGeometry() {
 	const auto narrowRatio = (ratiow < smallw)
 		? ((smallw - ratiow) / float64(smallw - _narrowWidth))
 		: 0.;
+	if (_tristegramBar) {
+		const auto show = (narrowRatio == 0.);
+		_tristegramBar->setVisible(show);
+		if (show) {
+			const auto barHeight = Tristegram::TopBar::DefaultHeight();
+			_tristegramBar->setGeometry(0, 0, ratiow, barHeight);
+			filterAreaTop = barHeight;
+		}
+	}
 
 	auto filterLeft = (controller()->filtersWidth()
 		? st::dialogsFilterSkip
@@ -4668,7 +4682,7 @@ void Widget::updateControlsGeometry() {
 				narrowRatio)
 			: (filterLeft + filterWidth);
 		_stories->setLayoutConstraints(
-			{ storiesLeft, filterTop + added },
+			{ storiesLeft, filterAreaTop + filterTop + added },
 			inFolderTitle ? style::al_left : style::al_right,
 			{ 0, expandedStoriesTop, barw, st::dialogsStoriesFull.height });
 	}

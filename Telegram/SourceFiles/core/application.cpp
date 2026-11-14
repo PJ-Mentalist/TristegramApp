@@ -379,6 +379,15 @@ Application::Application()
 	) | rpl::on_next([=](bool enabled) {
 		Ui::SetMaterialSwitches(enabled);
 	}, _lifetime);
+	Extera::Config::Instance().boolChanges(
+		u"tristegram_eco"_q
+	) | rpl::on_next([=](bool enabled) {
+		// Tristegram eco mode: turn off every animation and effect.
+		PowerSaving::Set(enabled
+			? PowerSaving::Flags(PowerSaving::kAll)
+			: PowerSaving::Flags());
+		saveSettingsDelayed();
+	}, _lifetime);
 	rpl::combine(
 		Extera::Config::Instance().intChanges(u"avatar_corners"_q),
 		Extera::Config::Instance().boolChanges(u"single_corner_radius"_q)
