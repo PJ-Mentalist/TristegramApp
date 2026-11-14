@@ -10101,6 +10101,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_tristegram_font_choose" = "Choose a font file";
 "lng_tristegram_font_failed" = "Could not open this font file";
 "lng_tristegram_font_about" = "The font applies after a restart. If it has no Cyrillic letters, they are taken from the standard font.";
+"lng_tristegram_look_title" = "Chat look";
+"lng_tristegram_chat_bg" = "Chat background: photo, color, gradient";
+"lng_tristegram_chat_theme" = "Themes and message colors";
+"lng_tristegram_look_about" = "Backgrounds support photos, solid colors and animated gradients. Message colors are set by the theme accent.";
 "lng_tristegram_private_avatars" = "Avatars in private chats";
 "lng_tristegram_section" = "Tristegram";
 "lng_tristegram_top_bar" = "Tristegram bar above chats";

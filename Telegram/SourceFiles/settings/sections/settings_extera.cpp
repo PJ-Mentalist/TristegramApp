@@ -33,6 +33,7 @@
 #include "extera/tristegram_logo.h"
 #include "extera/tristegram_folders.h"
 #include "extera/tristegram_fonts.h"
+#include "boxes/background_box.h"
 #include "settings/sections/settings_chat.h"
 #include "history/view/media/history_view_sticker.h"
 #include "ui/filter_icons.h"
@@ -3913,6 +3914,34 @@ void PartTristegram(SectionBuilder &builder) {
 		});
 	});
 	AddAbout(builder, tr::lng_tristegram_font_about());
+	builder.addSkip();
+	builder.addSubsectionTitle(tr::lng_tristegram_look_title());
+	builder.card([&] {
+		const auto controller = builder.controller();
+		builder.addButton({
+			.id = u"extera/tristegram_chat_bg"_q,
+			.title = tr::lng_tristegram_chat_bg(),
+			.st = &st::settingsButtonNoIcon,
+			.onClick = [=] {
+				if (controller) {
+					controller->show(Box<BackgroundBox>(controller));
+				}
+			},
+			.keywords = { u"background"_q, u"wallpaper"_q, u"gradient"_q },
+		});
+		builder.addButton({
+			.id = u"extera/tristegram_chat_theme"_q,
+			.title = tr::lng_tristegram_chat_theme(),
+			.st = &st::settingsButtonNoIcon,
+			.onClick = [=] {
+				if (controller) {
+					controller->showSettings(Settings::ChatId());
+				}
+			},
+			.keywords = { u"theme"_q, u"accent"_q, u"color"_q },
+		});
+	});
+	AddAbout(builder, tr::lng_tristegram_look_about());
 	builder.addSkip();
 	builder.card([&] {
 		AddChoice(

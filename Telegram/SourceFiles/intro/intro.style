@@ -97,7 +97,7 @@ introStepFieldTop: 96px;
 introPhoneTop: 6px;
 introLinkTop: 24px;
 introCountry: InputField(defaultInputField) {
-	textMargins: margins(3px, 27px, 3px, 6px);
+	textMargins: margins(12px, 27px, 12px, 6px);
 	style: TextStyle(defaultTextStyle) {
 		font: font(16px);
 	}

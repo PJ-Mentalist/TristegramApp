@@ -278,6 +278,128 @@ index ebb7796..95c5329 100644
  
  boxButtonFont: font(boxFontSize semibold);
  defaultBoxButtonTextStyle: TextStyle(semiboldTextStyle) {
+diff --git a/ui/widgets/fields/input_field.cpp b/ui/widgets/fields/input_field.cpp
+index cf7b90d..c5dcc63 100644
+--- a/ui/widgets/fields/input_field.cpp
++++ b/ui/widgets/fields/input_field.cpp
+@@ -2928,6 +2928,35 @@ void InputField::checkContentHeight() {
+ 	}
+ }
+ 
++namespace {
++
++// Tristegram: filled rounded field with a focus ring instead of the
++// underline, used when the field style has side text margins.
++void PaintTristegramField(
++		QPainter &p,
++		QRect rect,
++		QColor ring,
++		float64 ringOpacity) {
++	auto hq = PainterHighQualityEnabler(p);
++	const auto radius = style::ConvertScale(12);
++	p.setPen(Qt::NoPen);
++	p.setBrush(st::windowBgOver);
++	p.drawRoundedRect(QRectF(rect), radius, radius);
++	if (ringOpacity > 0.) {
++		ring.setAlphaF(ring.alphaF() * std::clamp(ringOpacity, 0., 1.));
++		const auto width = style::ConvertScale(2) * 0.75;
++		p.setPen(QPen(ring, width));
++		p.setBrush(Qt::NoBrush);
++		const auto half = width / 2.;
++		p.drawRoundedRect(
++			QRectF(rect).marginsRemoved(QMarginsF(half, half, half, half)),
++			radius - half,
++			radius - half);
++	}
++}
++
++} // namespace
++
+ void InputField::paintSurrounding(
+ 		QPainter &p,
+ 		QRect clip,
+@@ -2967,6 +2996,17 @@ void InputField::paintFlatSurrounding(
+ 		QRect clip,
+ 		float64 errorDegree,
+ 		float64 focusedDegree) {
++	if (_st.border > 0 && _st.textMargins.left() >= style::ConvertScale(8)) {
++		if (_st.textBg->c.alphaF() > 0.) {
++			p.fillRect(clip, _st.textBg);
++		}
++		PaintTristegramField(
++			p,
++			rect(),
++			anim::color(_st.borderFgActive, _st.borderFgError, errorDegree),
++			std::max(focusedDegree, errorDegree));
++		return;
++	}
+ 	if (_st.textBg->c.alphaF() > 0.) {
+ 		p.fillRect(clip, _st.textBg);
+ 	}
+diff --git a/ui/widgets/fields/masked_input_field.cpp b/ui/widgets/fields/masked_input_field.cpp
+index ef96309..9249fb4 100644
+--- a/ui/widgets/fields/masked_input_field.cpp
++++ b/ui/widgets/fields/masked_input_field.cpp
+@@ -145,19 +145,57 @@ void MaskedInputField::setTextMargins(const QMargins &mrg) {
+ 	refreshPlaceholder(_placeholderFull.current());
+ }
+ 
++namespace {
++
++// Tristegram: filled rounded field with a focus ring instead of the
++// underline, used when the field style has side text margins.
++void PaintTristegramField(
++		QPainter &p,
++		QRect rect,
++		QColor ring,
++		float64 ringOpacity) {
++	auto hq = PainterHighQualityEnabler(p);
++	const auto radius = style::ConvertScale(12);
++	p.setPen(Qt::NoPen);
++	p.setBrush(st::windowBgOver);
++	p.drawRoundedRect(QRectF(rect), radius, radius);
++	if (ringOpacity > 0.) {
++		ring.setAlphaF(ring.alphaF() * std::clamp(ringOpacity, 0., 1.));
++		const auto width = style::ConvertScale(2) * 0.75;
++		p.setPen(QPen(ring, width));
++		p.setBrush(Qt::NoBrush);
++		const auto half = width / 2.;
++		p.drawRoundedRect(
++			QRectF(rect).marginsRemoved(QMarginsF(half, half, half, half)),
++			radius - half,
++			radius - half);
++	}
++}
++
++} // namespace
++
+ void MaskedInputField::paintEvent(QPaintEvent *e) {
+ 	auto p = QPainter(this);
+ 
+ 	auto r = rect().intersected(e->rect());
+ 	p.fillRect(r, _st.textBg);
+-	if (_st.border) {
++	const auto tristegramRound = (_st.border > 0)
++		&& (_textMargins.left() >= style::ConvertScale(8));
++	if (_st.border && !tristegramRound) {
+ 		p.fillRect(0, height() - _st.border, width(), _st.border, _st.borderFg->b);
+ 	}
+ 	auto errorDegree = _a_error.value(_error ? 1. : 0.);
+ 	auto focusedDegree = _a_focused.value(_focused ? 1. : 0.);
+ 	auto borderShownDegree = _a_borderShown.value(1.);
+ 	auto borderOpacity = _a_borderOpacity.value(_borderVisible ? 1. : 0.);
+-	if (_st.borderActive && (borderOpacity > 0.)) {
++	if (tristegramRound) {
++		PaintTristegramField(
++			p,
++			rect(),
++			anim::color(_st.borderFgActive, _st.borderFgError, errorDegree),
++			std::max(focusedDegree, errorDegree));
++	}
++	if (!tristegramRound && _st.borderActive && (borderOpacity > 0.)) {
+ 		auto borderStart = std::clamp(_borderAnimationStart, 0, width());
+ 		auto borderFrom
+ 			= int(base::SafeRound(borderStart * (1. - borderShownDegree)));
 diff --git a/ui/widgets/menu/menu_action.cpp b/ui/widgets/menu/menu_action.cpp
 index 4c16b67..436df33 100644
 --- a/ui/widgets/menu/menu_action.cpp
@@ -334,7 +456,7 @@ index 4c16b67..436df33 100644
  	if (const auto icon = (selected ? _iconOver : _icon)) {
  		icon->paint(p, _st.itemIconPosition, width());
 diff --git a/ui/widgets/widgets.style b/ui/widgets/widgets.style
-index 8b8df7d..9605cd5 100644
+index 8b8df7d..d1ec8c0 100644
 --- a/ui/widgets/widgets.style
 +++ b/ui/widgets/widgets.style
 @@ -713,7 +713,7 @@ defaultRippleAnimationBgOver: RippleAnimation(defaultRippleAnimation) {
@@ -355,3 +477,12 @@ index 8b8df7d..9605cd5 100644
  	duration: 150;
  	showDuration: 200;
  }
+@@ -1030,7 +1030,7 @@ defaultInputField: InputField {
+ 	textBgActive: windowBg;
+ 	textFg: windowFg;
+ 	textMarkBg: windowBgOver;
+-	textMargins: margins(0px, 28px, 0px, 4px);
++	textMargins: margins(12px, 26px, 12px, 6px);
+ 	textAlign: align(topleft);
+ 
+ 	placeholderFg: windowSubTextFg;
