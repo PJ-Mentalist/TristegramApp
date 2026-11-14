@@ -10,6 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "extera/extera_streamer.h"
 
 #include "base/options.h"
+#include <QtGui/QPainterPath>
 #include "base/unixtime.h"
 #include "core/ui_integration.h"
 #include "data/data_channel.h"
@@ -576,12 +577,32 @@ void PaintRow(
 	if (swipeTranslation) {
 		p.translate(swipeMirrored ? swipeTranslation : -swipeTranslation, 0);
 	}
-	p.fillRect(geometry, bg);
+	// Tristegram: rounded selection with side insets instead of a full
+	// width stripe.
+	p.fillRect(geometry, context.currentBg);
+	const auto roundedInset = style::ConvertScale(6);
+	const auto roundedRadius = style::ConvertScale(14);
+	const auto rounded = QRect(geometry).marginsRemoved(QMargins(
+		roundedInset,
+		style::ConvertScale(2),
+		roundedInset,
+		style::ConvertScale(2)));
+	if (context.active || context.selected) {
+		auto hq = PainterHighQualityEnabler(p);
+		p.setPen(Qt::NoPen);
+		p.setBrush(bg);
+		p.drawRoundedRect(rounded, roundedRadius, roundedRadius);
+	}
 	if (!(flags & Flag::TopicJumpRipple)) {
 		auto ripple = context.active
 			? st::dialogsRippleBgActive
 			: st::dialogsRippleBg;
+		auto clip = QPainterPath();
+		clip.addRoundedRect(QRectF(rounded), roundedRadius, roundedRadius);
+		p.save();
+		p.setClipPath(clip, Qt::IntersectClip);
 		row->paintRipple(p, 0, 0, context.width, &ripple->c);
+		p.restore();
 	}
 
 	if (flags & Flag::SavedMessages) {

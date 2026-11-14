@@ -26,6 +26,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/checkbox.h"
 #include "ui/wrap/slide_wrap.h"
 #include "ui/wrap/vertical_layout.h"
+#include "ui/painter.h"
+#include <QtGui/QPainterPath>
 #include "window/window_session_controller.h"
 #include "styles/style_settings.h"
 
@@ -164,7 +166,54 @@ SectionBuilder::SectionBuilder(BuildContext context)
 }
 
 void SectionBuilder::card(FnMut<void()> method) {
-	method();
+	// Tristegram: rows of a card are drawn as one rounded group with
+	// side margins, like grouped settings on iOS.
+	auto built = false;
+	v::match(_context, [&](WidgetContext &wctx) {
+		const auto outer = wctx.container;
+		const auto card = outer->add(
+			object_ptr<Ui::VerticalLayout>(outer),
+			st::exteraCardMargin);
+		wctx.container = card;
+		method();
+		wctx.container = outer;
+		built = true;
+
+		const auto overlay = Ui::CreateChild<Ui::RpWidget>(card);
+		overlay->setAttribute(Qt::WA_TransparentForMouseEvents);
+		card->sizeValue(
+		) | rpl::on_next([=](QSize size) {
+			overlay->setGeometry(QRect(QPoint(), size));
+			overlay->raise();
+		}, overlay->lifetime());
+		overlay->paintRequest(
+		) | rpl::on_next([=] {
+			const auto rect = overlay->rect();
+			if (rect.isEmpty()) {
+				return;
+			}
+			auto p = QPainter(overlay);
+			auto hq = PainterHighQualityEnabler(p);
+			const auto radius = double(st::exteraCardRadius);
+			auto rounded = QPainterPath();
+			rounded.addRoundedRect(QRectF(rect), radius, radius);
+			auto corners = QPainterPath();
+			corners.addRect(QRectF(rect));
+			corners = corners.subtracted(rounded);
+			p.fillPath(corners, st::windowBg);
+			p.setPen(QPen(st::windowBgRipple, style::ConvertScale(1)));
+			p.setBrush(Qt::NoBrush);
+			const auto half = style::ConvertScale(1) / 2.;
+			p.drawRoundedRect(
+				QRectF(rect).marginsRemoved(QMarginsF(half, half, half, half)),
+				radius - half,
+				radius - half);
+		}, overlay->lifetime());
+	}, [&](const SearchContext &) {
+	});
+	if (!built) {
+		method();
+	}
 }
 
 void SectionBuilder::add(FnMut<void(const BuildContext &ctx)> method) {

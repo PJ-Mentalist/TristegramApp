@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "intro/intro_step.h"
 
+#include "extera/tristegram_logo.h"
+#include "ui/painter.h"
+
 #include "intro/intro_widget.h"
 #include "intro/intro_signup.h"
 #include "storage/localstorage.h"
@@ -475,7 +478,23 @@ void Step::paintCover(QPainter &p, int top) {
 		planeLeft += deltaLeft;
 	//	planeTop += top;
 	}
-	st::introCoverIcon.paint(p, planeLeft, planeTop, width());
+	// Tristegram: our logo instead of the paper plane.
+	{
+		const auto size = style::ConvertScale(124);
+		const auto logo = QRectF(
+			planeLeft + (st::introCoverIcon.width() - size) / 2.
+				+ st::introCoverIconLeft,
+			planeTop - style::ConvertScale(4),
+			size,
+			size);
+		auto hq = PainterHighQualityEnabler(p);
+		p.setPen(Qt::NoPen);
+		p.setBrush(QColor(255, 255, 255, 60));
+		p.drawEllipse(logo.marginsAdded(QMarginsF(8, 8, 8, 8)));
+		p.setBrush(QColor(255, 255, 255, 235));
+		p.drawEllipse(logo.marginsAdded(QMarginsF(3, 3, 3, 3)));
+		Tristegram::PaintLogo(p, logo, Tristegram::CurrentLogoStyle());
+	}
 }
 
 int Step::contentLeft() const {

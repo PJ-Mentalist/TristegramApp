@@ -278,6 +278,61 @@ index ebb7796..95c5329 100644
  
  boxButtonFont: font(boxFontSize semibold);
  defaultBoxButtonTextStyle: TextStyle(semiboldTextStyle) {
+diff --git a/ui/widgets/menu/menu_action.cpp b/ui/widgets/menu/menu_action.cpp
+index 4c16b67..436df33 100644
+--- a/ui/widgets/menu/menu_action.cpp
++++ b/ui/widgets/menu/menu_action.cpp
+@@ -10,6 +10,7 @@
+ #include "ui/painter.h"
+ 
+ #include <QtGui/QtEvents>
++#include <QtGui/QPainterPath>
+ 
+ namespace Ui::Menu {
+ namespace {
+@@ -96,12 +97,19 @@ void Action::paintEvent(QPaintEvent *e) {
+ }
+ 
+ void Action::paintBackground(QPainter &p, bool selected) {
+-	if (selected && _st.itemBgOver->c.alpha() < 255) {
+-		p.fillRect(0, 0, width(), _height, _st.itemBg);
++	// Tristegram: rounded highlight with side insets, iOS-like.
++	p.fillRect(QRect(0, 0, width(), _height), _st.itemBg);
++	if (selected) {
++		const auto inset = style::ConvertScale(6);
++		const auto radius = style::ConvertScale(10);
++		auto hq = PainterHighQualityEnabler(p);
++		p.setPen(Qt::NoPen);
++		p.setBrush(_st.itemBgOver);
++		p.drawRoundedRect(
++			QRect(inset, 1, width() - inset * 2, _height - 2),
++			radius,
++			radius);
+ 	}
+-	p.fillRect(
+-		QRect(0, 0, width(), _height),
+-		selected ? _st.itemBgOver : _st.itemBg);
+ }
+ 
+ void Action::paintText(Painter &p) {
+@@ -118,7 +126,17 @@ void Action::paint(Painter &p) {
+ 	const auto selected = isSelected();
+ 	paintBackground(p, selected);
+ 	if (enabled) {
++		const auto inset = style::ConvertScale(6);
++		const auto radius = style::ConvertScale(10);
++		auto clip = QPainterPath();
++		clip.addRoundedRect(
++			QRectF(inset, 1, width() - inset * 2, _height - 2),
++			radius,
++			radius);
++		p.save();
++		p.setClipPath(clip, Qt::IntersectClip);
+ 		RippleButton::paintRipple(p, 0, 0);
++		p.restore();
+ 	}
+ 	if (const auto icon = (selected ? _iconOver : _icon)) {
+ 		icon->paint(p, _st.itemIconPosition, width());
 diff --git a/ui/widgets/widgets.style b/ui/widgets/widgets.style
 index 8b8df7d..9605cd5 100644
 --- a/ui/widgets/widgets.style
