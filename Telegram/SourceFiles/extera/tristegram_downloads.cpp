@@ -40,6 +40,36 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include <vector>
 
 namespace Tristegram {
+
+QString FileExtension(const QString &name) {
+	const auto dot = name.lastIndexOf('.');
+	if (dot < 0 || dot + 1 >= name.size() || name.size() - dot > 6) {
+		return QString();
+	}
+	return name.mid(dot + 1).toUpper();
+}
+
+// A color per kind of file, so that the list is easy to scan.
+QColor FileTileColor(const QString &ext) {
+	static const auto kMap = std::vector<std::pair<QStringList, QColor>>{
+		{ { u"JPG"_q, u"JPEG"_q, u"PNG"_q, u"GIF"_q, u"WEBP"_q, u"HEIC"_q, u"BMP"_q }, QColor(0x34, 0xC7, 0x59) },
+		{ { u"MP4"_q, u"MOV"_q, u"MKV"_q, u"AVI"_q, u"WEBM"_q }, QColor(0xAF, 0x52, 0xDE) },
+		{ { u"MP3"_q, u"OGG"_q, u"FLAC"_q, u"WAV"_q, u"M4A"_q, u"OPUS"_q }, QColor(0xFF, 0x2D, 0x55) },
+		{ { u"ZIP"_q, u"RAR"_q, u"7Z"_q, u"TAR"_q, u"GZ"_q }, QColor(0xFF, 0x9F, 0x0A) },
+		{ { u"PDF"_q }, QColor(0xFF, 0x45, 0x3A) },
+		{ { u"DOC"_q, u"DOCX"_q, u"TXT"_q, u"RTF"_q }, QColor(0x0A, 0x84, 0xFF) },
+		{ { u"XLS"_q, u"XLSX"_q, u"CSV"_q }, QColor(0x30, 0xB0, 0x50) },
+		{ { u"EXE"_q, u"MSI"_q, u"APK"_q, u"DMG"_q }, QColor(0x5E, 0x5C, 0xE6) },
+		{ { u"PY"_q, u"JS"_q, u"CPP"_q, u"H"_q, u"JSON"_q, u"PLUGIN"_q }, QColor(0x64, 0xD2, 0xFF) },
+	};
+	for (const auto &[list, color] : kMap) {
+		if (list.contains(ext)) {
+			return color;
+		}
+	}
+	return QColor(0x8E, 0x8E, 0x93);
+}
+
 namespace {
 
 constexpr auto kRefreshInterval = crl::time(250);
@@ -61,38 +91,6 @@ constexpr auto kRecentLimit = 12;
 
 [[nodiscard]] style::font BigFont() {
 	return style::font(Px(26), style::FontFlags(), st::semiboldFont->family());
-}
-
-[[nodiscard]] QString Extension(const QString &name) {
-	const auto dot = name.lastIndexOf('.');
-	if (dot < 0 || dot + 1 >= name.size() || name.size() - dot > 6) {
-		return QString();
-	}
-	return name.mid(dot + 1).toUpper();
-}
-
-// A color per kind of file, so that the list is easy to scan.
-[[nodiscard]] QColor TileColor(const QString &ext, bool photo) {
-	if (photo) {
-		return QColor(0x34, 0xC7, 0x59);
-	}
-	static const auto kMap = std::vector<std::pair<QStringList, QColor>>{
-		{ { u"JPG"_q, u"JPEG"_q, u"PNG"_q, u"GIF"_q, u"WEBP"_q, u"HEIC"_q, u"BMP"_q }, QColor(0x34, 0xC7, 0x59) },
-		{ { u"MP4"_q, u"MOV"_q, u"MKV"_q, u"AVI"_q, u"WEBM"_q }, QColor(0xAF, 0x52, 0xDE) },
-		{ { u"MP3"_q, u"OGG"_q, u"FLAC"_q, u"WAV"_q, u"M4A"_q, u"OPUS"_q }, QColor(0xFF, 0x2D, 0x55) },
-		{ { u"ZIP"_q, u"RAR"_q, u"7Z"_q, u"TAR"_q, u"GZ"_q }, QColor(0xFF, 0x9F, 0x0A) },
-		{ { u"PDF"_q }, QColor(0xFF, 0x45, 0x3A) },
-		{ { u"DOC"_q, u"DOCX"_q, u"TXT"_q, u"RTF"_q }, QColor(0x0A, 0x84, 0xFF) },
-		{ { u"XLS"_q, u"XLSX"_q, u"CSV"_q }, QColor(0x30, 0xB0, 0x50) },
-		{ { u"EXE"_q, u"MSI"_q, u"APK"_q, u"DMG"_q }, QColor(0x5E, 0x5C, 0xE6) },
-		{ { u"PY"_q, u"JS"_q, u"CPP"_q, u"H"_q, u"JSON"_q, u"PLUGIN"_q }, QColor(0x64, 0xD2, 0xFF) },
-	};
-	for (const auto &[list, color] : kMap) {
-		if (list.contains(ext)) {
-			return color;
-		}
-	}
-	return QColor(0x8E, 0x8E, 0x93);
 }
 
 [[nodiscard]] QString FormatSpeed(double bytesPerSecond) {
@@ -183,7 +181,7 @@ void PaintTile(
 		const QString &ext,
 		bool photo) {
 	auto hq = PainterHighQualityEnabler(p);
-	const auto color = TileColor(ext, photo);
+	const auto color = photo ? QColor(0x34, 0xC7, 0x59) : FileTileColor(ext);
 	auto gradient = QLinearGradient(rect.topLeft(), rect.bottomRight());
 	gradient.setColorAt(0., color.lighter(118));
 	gradient.setColorAt(1., color.darker(112));
@@ -810,7 +808,7 @@ void DownloadsList::paintActive(
 		rect.y() + (rect.height() - tileSize) / 2,
 		tileSize,
 		tileSize);
-	PaintTile(p, tile, Extension(entry.name), entry.photo != nullptr);
+	PaintTile(p, tile, FileExtension(entry.name), entry.photo != nullptr);
 
 	const auto button = Px(32);
 	const auto right = width() - side - (entry.done
@@ -907,7 +905,7 @@ void DownloadsList::paintRecent(QPainter &p, QRect rect, int index) {
 		rect.y() + (rect.height() - tileSize) / 2,
 		tileSize,
 		tileSize);
-	PaintTile(p, tile, Extension(entry.name), false);
+	PaintTile(p, tile, FileExtension(entry.name), false);
 
 	const auto button = Px(30);
 	const auto left = tile.x() + tileSize + Px(12);

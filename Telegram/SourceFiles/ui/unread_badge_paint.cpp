@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "ui/unread_badge_paint.h"
 
+#include "ui/tristegram_accent.h"
 #include "ui/ui_utility.h"
 #include "styles/style_dialogs.h"
 
@@ -96,6 +97,16 @@ void CreateCircleMask(UnreadBadgeSizeData *data, int size) {
 
 void PaintUnreadBadge(QPainter &p, const QRect &rect, const UnreadBadgeStyle &st) {
 	Assert(rect.height() == st.size);
+
+	if (!st.muted
+		&& !st.active
+		&& st.sizeId != UnreadBadgeSize::ReactionInDialogs
+		&& st.sizeId != UnreadBadgeSize::PollInDialogs
+		&& TristegramAccent::Flag(u"tristegram_gradient_badges"_q)) {
+		// Tristegram: unread counters in the logo gradient.
+		TristegramAccent::FillGradient(p, QRectF(rect));
+		return;
+	}
 
 	int index = (st.muted ? 0x03 : 0x00) + (st.active ? 0x02 : (st.selected ? 0x01 : 0x00));
 	int size = st.size, sizehalf = size / 2;

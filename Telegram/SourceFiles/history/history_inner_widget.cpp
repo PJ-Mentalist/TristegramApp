@@ -482,9 +482,20 @@ HistoryInner::HistoryInner(
 		const auto history = item->history();
 		return (history == _history)
 			|| (_migrated && history == _migrated);
-	}) | rpl::on_next([=] {
+	}) | rpl::on_next([=](not_null<HistoryItem*> item) {
 		checkAnnounceFirstMessages();
+		if (Extera::Bool(u"tristegram_message_appear"_q)
+			&& !Extera::Bool(u"tristegram_eco"_q)
+			&& !anim::Disabled()) {
+			_tristegramAppear[item.get()] = crl::now();
+			if (!_tristegramAppearAnimation.animating()) {
+				_tristegramAppearAnimation.start();
+			}
+		}
 	}, lifetime());
+	_tristegramAppearAnimation.init([=] {
+		tristegramAppearCheck();
+	});
 	setupThanosEffect();
 	session().data().viewRemoved(
 	) | rpl::on_next(
@@ -1716,7 +1727,30 @@ void HistoryInner::paintEvent(QPaintEvent *e) {
 				context.fullMessageSelected = selection.fullMessageSelected;
 				context.messageSelection = selection.messageSelection;
 				context.highlight = _widget->itemHighlight(item);
-				view->draw(p, context);
+				if (const auto appear = tristegramAppearProgress(item)
+					; appear < 1.) {
+					// Tristegram: fade in, sliding up or springing out.
+					p.save();
+					p.setOpacity(p.opacity()
+						* anim::easeOutCubic(1., std::min(appear * 1.6, 1.)));
+					if (view->hasOutLayout()) {
+						const auto scale = 0.92
+							+ 0.08 * anim::easeOutBack(1., appear);
+						const auto origin = QPointF(width(), height);
+						p.translate(origin);
+						p.scale(scale, scale);
+						p.translate(-origin);
+					} else {
+						p.translate(
+							0.,
+							(1. - anim::easeOutCubic(1., appear))
+								* style::ConvertScale(16));
+					}
+					view->draw(p, context);
+					p.restore();
+				} else {
+					view->draw(p, context);
+				}
 				processPainted(view, top, height);
 			}
 			top += height;
@@ -2525,7 +2559,34 @@ void HistoryInner::performDrag() {
 	}
 }
 
+double HistoryInner::tristegramAppearProgress(
+		not_null<const HistoryItem*> item) const {
+	const auto i = _tristegramAppear.find(item);
+	if (i == _tristegramAppear.end()) {
+		return 1.;
+	}
+	constexpr auto kDuration = 340.;
+	return std::clamp((crl::now() - i->second) / kDuration, 0., 1.);
+}
+
+void HistoryInner::tristegramAppearCheck() {
+	auto finished = std::vector<not_null<const HistoryItem*>>();
+	for (const auto &[item, started] : _tristegramAppear) {
+		if (tristegramAppearProgress(item) >= 1.) {
+			finished.push_back(item);
+		}
+	}
+	for (const auto item : finished) {
+		_tristegramAppear.remove(item);
+	}
+	if (_tristegramAppear.empty()) {
+		_tristegramAppearAnimation.stop();
+	}
+	update();
+}
+
 void HistoryInner::itemRemoved(not_null<const HistoryItem*> item) {
+	_tristegramAppear.remove(item);
 	if (_pinnedItem == item) {
 		_pinnedItem = nullptr;
 	}

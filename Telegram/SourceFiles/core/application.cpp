@@ -21,6 +21,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/checkbox.h"
 
 #include "extera/extera_config.h"
+#include "extera/tristegram_logo.h"
+#include "ui/tristegram_accent.h"
 #include "extera/extera_welcome.h"
 #include "extera/extera_badges.h"
 #include "extera/extera_plugins.h"
@@ -601,6 +603,13 @@ void Application::run() {
 		// Tristegram: bubble corner radius chosen in settings.
 		const_cast<int&>(st::bubbleRadiusLarge) = style::ConvertScale(radius);
 	}
+	Ui::TristegramAccent::SetGradientProvider([] {
+		const auto style = Tristegram::CurrentLogoStyle();
+		return Ui::TristegramAccent::Gradient{ style.from, style.to };
+	});
+	Ui::TristegramAccent::SetFlagProvider([](const QString &key) {
+		return Extera::Bool(key);
+	});
 	Ui::PopupMenu::SetGlassEnabled(
 		Extera::Bool(u"tristegram_glass_menus"_q));
 	Extera::Config::Instance().boolChanges(

@@ -591,7 +591,19 @@ void PaintRow(
 	if (context.active || context.selected) {
 		auto hq = PainterHighQualityEnabler(p);
 		p.setPen(Qt::NoPen);
-		p.setBrush(bg);
+		if (context.active
+			&& Extera::Bool(u"tristegram_gradient_active_chat"_q)) {
+			// Tristegram: the opened chat in the logo gradient.
+			const auto style = Tristegram::CurrentLogoStyle();
+			auto gradient = QLinearGradient(
+				rounded.topLeft(),
+				rounded.bottomRight());
+			gradient.setColorAt(0., style.from);
+			gradient.setColorAt(1., style.to);
+			p.setBrush(gradient);
+		} else {
+			p.setBrush(bg);
+		}
 		p.drawRoundedRect(rounded, roundedRadius, roundedRadius);
 	}
 	if (!(flags & Flag::TopicJumpRipple)) {
@@ -697,6 +709,38 @@ void PaintRow(
 		p.setPen(QPen(brush, width));
 		p.setBrush(Qt::NoBrush);
 		p.drawEllipse(frame);
+	}
+
+	// Tristegram: a green ring around people who are online right now.
+	if (Extera::Bool(u"tristegram_online_ring"_q)
+		&& from
+		&& !(flags & (Flag::SavedMessages
+			| Flag::RepliesMessages
+			| Flag::HiddenAuthor
+			| Flag::MyNotes))) {
+		const auto user = from->asUser();
+		if (user
+			&& !user->isSelf()
+			&& !user->isBot()
+			&& Data::IsUserOnline(user)) {
+			auto hq = PainterHighQualityEnabler(p);
+			const auto size = context.st->photoSize;
+			const auto width = style::ConvertScale(2) * 1.;
+			const auto skip = width / 2. + style::ConvertScale(1);
+			const auto frame = QRectF(
+				context.st->padding.left(),
+				context.st->padding.top(),
+				size,
+				size).marginsAdded(QMarginsF(skip, skip, skip, skip));
+			auto gradient = QLinearGradient(
+				frame.topRight(),
+				frame.bottomLeft());
+			gradient.setColorAt(0., QColor(0x34, 0xC7, 0x59));
+			gradient.setColorAt(1., QColor(0x30, 0xD1, 0x9E));
+			p.setPen(QPen(QBrush(gradient), width));
+			p.setBrush(Qt::NoBrush);
+			p.drawEllipse(frame);
+		}
 	}
 
 	const auto nameleft = context.st->nameLeft;

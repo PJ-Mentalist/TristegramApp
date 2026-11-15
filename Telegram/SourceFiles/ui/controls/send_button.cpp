@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "ui/controls/send_button.h"
+#include "ui/tristegram_accent.h"
 
 #include "lang/lang_tag.h"
 #include "lottie/lottie_icon.h"
@@ -299,6 +300,38 @@ void SendButton::paintCancel(QPainter &p, bool over) {
 
 void SendButton::paintSend(QPainter &p, bool over) {
 	const auto &sendIcon = over ? _st.inner.iconOver : _st.inner.icon;
+	if (_st.sendIconFillPadding <= 0
+		&& !isDisabled()
+		&& !_state.fillBgOverride.isValid()
+		&& TristegramAccent::Flag(u"tristegram_send_capsule"_q)) {
+		// Tristegram: a round gradient button with a white plane.
+		const auto side = std::min(width(), height())
+			- style::ConvertScale(over ? 8 : 10);
+		const auto rect = QRectF(
+			(width() - side) / 2.,
+			(height() - side) / 2.,
+			side,
+			side);
+		{
+			auto hq = PainterHighQualityEnabler(p);
+			auto glow = TristegramAccent::Current().from;
+			glow.setAlphaF(over ? 0.30 : 0.18);
+			p.setPen(Qt::NoPen);
+			p.setBrush(glow);
+			const auto grow = style::ConvertScale(3);
+			p.drawEllipse(rect.marginsAdded({ grow, grow, grow, grow }));
+		}
+		TristegramAccent::FillGradient(p, rect);
+		const auto shift = QPoint(
+			int(std::round(rect.center().x())) - width() / 2,
+			int(std::round(rect.center().y())) - height() / 2);
+		sendIcon.paint(
+			p,
+			_st.sendIconPosition + shift,
+			width(),
+			QColor(255, 255, 255));
+		return;
+	}
 	if (const auto padding = _st.sendIconFillPadding; padding > 0) {
 		const auto ellipse = sendEllipseRect();
 		{

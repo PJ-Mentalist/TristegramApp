@@ -6,6 +6,8 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/media/history_view_document.h"
+#include "extera/extera_config.h"
+#include "extera/tristegram_downloads.h"
 
 #include "base/random.h"
 #include "lang/lang_keys.h"
@@ -851,6 +853,21 @@ void Document::draw(
 						}
 					}
 				}
+			} else if (!_data->isSong()
+				&& !_data->isVoiceMessage()
+				&& Extera::Bool(u"tristegram_file_tiles"_q)) {
+				// Tristegram: a rounded tile colored by the kind of file.
+				auto hq = PainterHighQualityEnabler(p);
+				const auto color = Tristegram::FileTileColor(
+					Tristegram::FileExtension(_data->filename()));
+				auto gradient = QLinearGradient(
+					inner.topLeft(),
+					inner.bottomRight());
+				gradient.setColorAt(0., color.lighter(118));
+				gradient.setColorAt(1., color.darker(112));
+				p.setBrush(gradient);
+				const auto radius = inner.height() * 0.3;
+				p.drawRoundedRect(QRectF(inner), radius, radius);
 			} else {
 				auto hq = PainterHighQualityEnabler(p);
 				p.setBrush(stm->msgFileBg);

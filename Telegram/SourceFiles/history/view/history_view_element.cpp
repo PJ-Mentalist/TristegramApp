@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_element.h"
+#include "ui/tristegram_accent.h"
 
 #include "extera/extera_config.h"
 
@@ -789,6 +790,60 @@ void UnreadBar::paint(
 	const auto st = context.st;
 	const auto bottom = y + height();
 	y += marginTop();
+	if (Ui::TristegramAccent::Flag(u"tristegram_gradient_badges"_q)) {
+		// Tristegram: a gradient pill with lines fading to the sides.
+		auto maxwidth = w;
+		if (mode == ElementChatMode::Wide) {
+			maxwidth = std::min(
+				maxwidth,
+				st::msgMaxWidth
+					+ 2 * st::msgPhotoSkip
+					+ 2 * st::msgMargin.left());
+		}
+		const auto area = maxwidth;
+		const auto barHeight = height() - marginTop() - st::lineWidth;
+		const auto &font = st::historyUnreadBarFont;
+		const auto pillHeight = std::min(
+			barHeight,
+			font->height + style::ConvertScale(8));
+		const auto pillWidth = width + style::ConvertScale(28);
+		const auto pill = QRectF(
+			(area - pillWidth) / 2.,
+			y + (barHeight - pillHeight) / 2.,
+			pillWidth,
+			pillHeight);
+		const auto colors = Ui::TristegramAccent::Current();
+		const auto lineY = pill.center().y();
+		const auto gap = style::ConvertScale(8);
+		auto left = QLinearGradient(QPointF(0, lineY), pill.topLeft());
+		auto fade = colors.from;
+		fade.setAlpha(0);
+		left.setColorAt(0., fade);
+		left.setColorAt(1., colors.from);
+		p.fillRect(
+			QRectF(0, lineY - st::lineWidth / 2., pill.x() - gap, st::lineWidth),
+			left);
+		auto right = QLinearGradient(pill.topRight(), QPointF(area, lineY));
+		auto fadeTo = colors.to;
+		fadeTo.setAlpha(0);
+		right.setColorAt(0., colors.to);
+		right.setColorAt(1., fadeTo);
+		p.fillRect(
+			QRectF(
+				pill.x() + pill.width() + gap,
+				lineY - st::lineWidth / 2.,
+				area - (pill.x() + pill.width() + gap),
+				st::lineWidth),
+			right);
+		Ui::TristegramAccent::FillGradient(p, pill);
+		p.setFont(font);
+		p.setPen(QColor(255, 255, 255));
+		p.drawText(pill, Qt::AlignCenter, text);
+		if (previousTranslation != 0) {
+			p.translate(previousTranslation, 0);
+		}
+		return;
+	}
 	p.fillRect(
 		0,
 		y,

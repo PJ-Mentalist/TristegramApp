@@ -717,6 +717,8 @@ PRIVATE
     ui/power_saving.h
     ui/vertical_list.cpp
     ui/vertical_list.h
+    ui/tristegram_accent.cpp
+    ui/tristegram_accent.h
     ui/unread_badge_paint.cpp
     ui/unread_badge_paint.h
     ui/unread_counter_format.cpp

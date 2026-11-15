@@ -655,6 +655,13 @@ private:
 	const std::unique_ptr<Ui::PathShiftGradient> _pathGradient;
 	std::unique_ptr<HistoryView::GramReadLine> _gramReadLine;
 	QPainterPath _highlightPathCache;
+
+	// Tristegram: new messages slide in and fade, own ones spring a bit.
+	[[nodiscard]] double tristegramAppearProgress(
+		not_null<const HistoryItem*> item) const;
+	void tristegramAppearCheck();
+	base::flat_map<not_null<const HistoryItem*>, crl::time> _tristegramAppear;
+	Ui::Animations::Basic _tristegramAppearAnimation;
 	bool _isChatWide = false;
 	bool _removeFromUserpics = false;
 

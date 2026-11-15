@@ -347,6 +347,38 @@ index ebb7796..95c5329 100644
  
  boxButtonFont: font(boxFontSize semibold);
  defaultBoxButtonTextStyle: TextStyle(semiboldTextStyle) {
+diff --git a/ui/toast/toast_widget.cpp b/ui/toast/toast_widget.cpp
+index 433b8f3..42763a6 100644
+--- a/ui/toast/toast_widget.cpp
++++ b/ui/toast/toast_widget.cpp
+@@ -509,8 +509,26 @@ void Widget::setShownLevel(float64 shownLevel) {
+ }
+ 
+ void Widget::paintBackground(QPainter &p) {
++	// Tristegram: toasts are glassy capsules with a soft sheen and a rim.
+ 	auto hq = PainterHighQualityEnabler(p);
+-	_roundRect.paint(p, rect());
++	const auto r = QRectF(rect());
++	const auto radius = std::min(
++		r.height() / 2.,
++		double(style::ConvertScale(20)));
++	p.setPen(Qt::NoPen);
++	p.setBrush(st::toastBg);
++	p.drawRoundedRect(r, radius, radius);
++	auto sheen = QLinearGradient(r.topLeft(), r.bottomLeft());
++	sheen.setColorAt(0., QColor(255, 255, 255, 26));
++	sheen.setColorAt(0.5, QColor(255, 255, 255, 0));
++	p.setBrush(sheen);
++	p.drawRoundedRect(r, radius, radius);
++	p.setBrush(Qt::NoBrush);
++	p.setPen(QPen(QColor(255, 255, 255, 36), 1.));
++	p.drawRoundedRect(
++		r.marginsRemoved({ 0.5, 0.5, 0.5, 0.5 }),
++		radius - 0.5,
++		radius - 0.5);
+ }
+ 
+ void Widget::paintToProxy() {
 diff --git a/ui/widgets/fields/input_field.cpp b/ui/widgets/fields/input_field.cpp
 index cf7b90d..c5dcc63 100644
 --- a/ui/widgets/fields/input_field.cpp

@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_service_message.h"
+#include "ui/tristegram_accent.h"
 #include "ui/effects/round_checkbox.h"
 #include "ui/painter.h"
 #include "styles/style_chat.h"
@@ -167,6 +168,34 @@ void PaintPreparedDate(
 
 	left += (w - dateTextWidth - st::msgServicePadding.left() - st::msgServicePadding.right()) / 2;
 	int height = st::msgServicePadding.top() + st::msgServiceFont->height + st::msgServicePadding.bottom();
+	if (Ui::TristegramAccent::Flag(u"tristegram_date_capsules"_q)) {
+		// Tristegram: the date as a glassy capsule with a light rim.
+		const auto extra = style::ConvertScale(5);
+		const auto capsule = QRectF(
+			left - extra,
+			y + st::msgServiceMargin.top(),
+			dateTextWidth
+				+ st::msgServicePadding.left()
+				+ st::msgServicePadding.left()
+				+ 2 * extra,
+			height);
+		auto hq = PainterHighQualityEnabler(p);
+		const auto radius = capsule.height() / 2.;
+		p.setPen(Qt::NoPen);
+		p.setBrush(bg);
+		p.drawRoundedRect(capsule, radius, radius);
+		auto sheen = QLinearGradient(capsule.topLeft(), capsule.bottomLeft());
+		sheen.setColorAt(0., QColor(255, 255, 255, 34));
+		sheen.setColorAt(0.55, QColor(255, 255, 255, 0));
+		p.setBrush(sheen);
+		p.drawRoundedRect(capsule, radius, radius);
+		p.setBrush(Qt::NoBrush);
+		p.setPen(QPen(QColor(255, 255, 255, 40), 1.));
+		p.drawRoundedRect(
+			capsule.marginsRemoved({ 0.5, 0.5, 0.5, 0.5 }),
+			radius - 0.5,
+			radius - 0.5);
+	} else
 	ServiceMessagePainter::PaintBubble(
 		p,
 		bg,
