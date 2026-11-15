@@ -2040,7 +2040,7 @@ void Message::draw(Painter &p, const PaintContext &context) const {
 			auto hq = PainterHighQualityEnabler(p);
 			p.setPen(Qt::NoPen);
 			const auto radius = double(Ui::BubbleRadiusLarge());
-			const auto base = QRectF(g);
+			const auto shadowBase = QRectF(g);
 			const auto dark = context.st->dark()
 				? 2.2
 				: 1.;
@@ -2048,7 +2048,11 @@ void Message::draw(Painter &p, const PaintContext &context) const {
 				const auto spread = i * 0.8;
 				p.setBrush(QColor(0, 0, 0, int((4 + 3 * (3 - i)) * dark)));
 				p.drawRoundedRect(
-					base.adjusted(-spread, -spread * 0.3, spread, spread * 1.4),
+					shadowBase.adjusted(
+						-spread,
+						-spread * 0.3,
+						spread,
+						spread * 1.4),
 					radius + spread,
 					radius + spread);
 			}
