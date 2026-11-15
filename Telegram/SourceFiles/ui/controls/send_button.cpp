@@ -319,7 +319,7 @@ void SendButton::paintSend(QPainter &p, bool over) {
 			p.setPen(Qt::NoPen);
 			p.setBrush(glow);
 			const auto grow = style::ConvertScale(3);
-			p.drawEllipse(rect.marginsAdded({ grow, grow, grow, grow }));
+			p.drawEllipse(rect.marginsAdded(QMarginsF(grow, grow, grow, grow)));
 		}
 		TristegramAccent::FillGradient(p, rect);
 		const auto shift = QPoint(

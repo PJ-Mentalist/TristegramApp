@@ -6,6 +6,8 @@ Telegram Desktop. Licensed under GNU GPL v3.
 
 #include "apiwrap.h"
 #include "base/timer.h"
+#include "base/unique_qptr.h"
+#include "base/weak_ptr.h"
 #include "data/data_document.h"
 #include "data/data_document_media.h"
 #include "data/data_file_origin.h"
@@ -223,7 +225,7 @@ void PlayTrack(not_null<Main::Session*> session, const Track &track) {
 		return;
 	}
 	const auto peer = session->data().peer(track.peer);
-	const auto weak = base::make_weak(session);
+	const auto weak = base::make_weak(session.get());
 	session->api().requestMessageData(peer, track.msg, [=] {
 		if (const auto strong = weak.get()) {
 			const auto item = strong->data().message(track.peer, track.msg);
@@ -331,7 +333,7 @@ public:
 		}
 		_queue = std::move(list);
 		_queueIndex = index;
-		_session = base::make_weak(session);
+		_session = base::make_weak(session.get());
 		PlayTrack(session, _queue[_queueIndex]);
 	}
 	bool queueStep(int delta) {
@@ -1724,7 +1726,7 @@ void MusicWindow::paintEvent(QPaintEvent *e) {
 		p.setPen(Qt::NoPen);
 		p.setBrush(wash);
 		p.drawRoundedRect(
-			QRectF(hero).marginsRemoved({ Px(12), 0, Px(12), Px(8) }),
+			QRectF(hero).marginsRemoved(QMarginsF(Px(12), 0, Px(12), Px(8))),
 			Px(20),
 			Px(20));
 	}
@@ -1842,7 +1844,7 @@ void MusicWindow::paintEvent(QPaintEvent *e) {
 		p.drawEllipse(playRect);
 		PaintPlayIcon(
 			p,
-			playRect.marginsRemoved({ Px(13), Px(13), Px(13), Px(13) }),
+			playRect.marginsRemoved(QMarginsF(Px(13), Px(13), Px(13), Px(13))),
 			IsPlaying(),
 			QColor(255, 255, 255));
 	}
@@ -1853,7 +1855,7 @@ void MusicWindow::paintEvent(QPaintEvent *e) {
 			p.setBrush(Alpha(st::windowFg->c, 0.08));
 			p.drawEllipse(r);
 		}
-		const auto inner = r.marginsRemoved({ Px(9), Px(9), Px(9), Px(9) });
+		const auto inner = r.marginsRemoved(QMarginsF(Px(9), Px(9), Px(9), Px(9)));
 		if (button == Button::Lyrics) {
 			// Lines of text with a note: the full player with lyrics.
 			p.setPen(QPen(st::windowSubTextFg->c, Px(2), Qt::SolidLine, Qt::RoundCap));
@@ -2095,7 +2097,7 @@ void NowPlayingPill::paintEvent(QPaintEvent *e) {
 				p.setBrush(Alpha(st::windowFg->c, 0.1));
 				p.drawEllipse(rect);
 			}
-			const auto inner = rect.marginsRemoved({ Px(7), Px(7), Px(7), Px(7) });
+			const auto inner = rect.marginsRemoved(QMarginsF(Px(7), Px(7), Px(7), Px(7)));
 			if (part == Part::Play) {
 				PaintPlayIcon(p, inner, IsPlaying(), st::windowFg->c);
 			} else {
