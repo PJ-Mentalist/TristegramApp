@@ -13,6 +13,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "media/clip/media_clip_reader.h"
 #include "ui/painter.h"
 #include "window/window_session_controller.h"
+#include "mainwindow.h"
 #include "styles/style_basic.h"
 
 #include <QtCore/QDir>

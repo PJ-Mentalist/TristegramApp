@@ -307,7 +307,7 @@ private:
 	const not_null<CleanerList*> _list;
 	const not_null<Ui::RoundButton*> _select;
 	const not_null<Ui::RoundButton*> _archive;
-	const not_null<Ui::RoundButton*> _leave;
+	const not_null<Ui::RoundButton*> _leaveButton;
 	const not_null<Ui::IconButton*> _closeButton;
 
 };
@@ -364,7 +364,7 @@ CleanerContent::CleanerContent(
 	this,
 	tr::lng_tgc_archive(),
 	st::defaultLightButton))
-, _leave(Ui::CreateChild<Ui::RoundButton>(
+, _leaveButton(Ui::CreateChild<Ui::RoundButton>(
 	this,
 	tr::lng_tgc_leave(),
 	st::defaultActiveButton))
@@ -372,15 +372,15 @@ CleanerContent::CleanerContent(
 	_closeButton->setClickedCallback([=] { _close(); });
 	_select->setClickedCallback([=] { _list->toggleAll(); });
 	_archive->setClickedCallback([=] { archive(); });
-	_leave->setClickedCallback([=] { leave(); });
+	_leaveButton->setClickedCallback([=] { leave(); });
 	_list->checkedCount(
 	) | rpl::on_next([=](int count) {
 		_archive->setText(rpl::single(
 			tr::lng_tgc_archive(tr::now) + u" ("_q + QString::number(count) + ')'));
-		_leave->setText(rpl::single(
+		_leaveButton->setText(rpl::single(
 			tr::lng_tgc_leave(tr::now) + u" ("_q + QString::number(count) + ')'));
 		_archive->setDisabled(!count);
-		_leave->setDisabled(!count);
+		_leaveButton->setDisabled(!count);
 	}, lifetime());
 
 	sizeValue(
@@ -395,9 +395,9 @@ CleanerContent::CleanerContent(
 		const auto footer = Px(64);
 		_scroll->setGeometry(0, top, size.width(), size.height() - top - footer);
 		_list->resizeToWidth(size.width());
-		const auto buttonsTop = size.height() - footer + (footer - _leave->height()) / 2;
-		_leave->moveToRight(side, buttonsTop);
-		_archive->moveToRight(side + _leave->width() + Px(8), buttonsTop);
+		const auto buttonsTop = size.height() - footer + (footer - _leaveButton->height()) / 2;
+		_leaveButton->moveToRight(side, buttonsTop);
+		_archive->moveToRight(side + _leaveButton->width() + Px(8), buttonsTop);
 		_select->moveToLeft(side, buttonsTop);
 	}, lifetime());
 

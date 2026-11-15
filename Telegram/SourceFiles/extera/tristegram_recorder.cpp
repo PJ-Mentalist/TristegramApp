@@ -41,7 +41,7 @@ using namespace FFmpeg;
 // Encodes frames to H.264 in an mp4 file, lives on its own queue.
 class Encoder final {
 public:
-	Encoder(QString path, int fps);
+	Encoder(crl::weak_on_queue<Encoder> weak, QString path, int fps);
 	~Encoder();
 
 	void push(QImage frame, crl::time timestamp);
@@ -74,7 +74,7 @@ private:
 
 };
 
-Encoder::Encoder(QString path, int fps)
+Encoder::Encoder(crl::weak_on_queue<Encoder>, QString path, int fps)
 : _file(path)
 , _fps(fps) {
 }

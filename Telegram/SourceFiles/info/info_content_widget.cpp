@@ -200,7 +200,22 @@ void ContentWidget::paintGlass(QRect clip) {
 		return;
 	}
 	auto gaps = std::vector<QRect>();
-	for (const auto divider : inner->findChildren<Ui::BoxContentDivider*>()) {
+	auto dividers = std::vector<Ui::BoxContentDivider*>();
+	{
+		auto stack = std::vector<QObject*>{ inner };
+		while (!stack.empty()) {
+			const auto object = stack.back();
+			stack.pop_back();
+			for (const auto child : object->children()) {
+				if (const auto divider
+					= dynamic_cast<Ui::BoxContentDivider*>(child)) {
+					dividers.push_back(divider);
+				}
+				stack.push_back(child);
+			}
+		}
+	}
+	for (const auto divider : dividers) {
 		if (!divider->isVisible() || divider->height() <= 0) {
 			continue;
 		}
