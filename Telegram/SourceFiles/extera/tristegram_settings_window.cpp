@@ -1450,10 +1450,10 @@ SettingsWindow::SettingsWindow(
 		auto p = QPainter(this);
 		const auto navWidth = _navScroll->width();
 		p.fillRect(
-			QRect(0, 0, navWidth, height()),
+			QRect(0, 0, navWidth, this->height()),
 			Alpha(st::windowFg->c, 0.025));
 		p.fillRect(
-			QRect(navWidth, 0, st::lineWidth, height()),
+			QRect(navWidth, 0, st::lineWidth, this->height()),
 			Alpha(st::windowFg->c, 0.08));
 	}, lifetime());
 
