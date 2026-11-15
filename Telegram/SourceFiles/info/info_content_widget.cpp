@@ -6,6 +6,10 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "info/info_content_widget.h"
+#include "ui/painter.h"
+#include "ui/widgets/box_content_divider.h"
+#include "window/section_widget.h"
+#include "extera/extera_config.h"
 
 #include "api/api_who_reacted.h"
 #include "boxes/peer_list_box.h"
@@ -158,6 +162,11 @@ bool ContentWidget::isStackBottom() const {
 }
 
 void ContentWidget::paintEvent(QPaintEvent *e) {
+	if (_controller->wrap() == Wrap::Side
+		&& Extera::Bool(u"tristegram_glass_info"_q)) {
+		paintGlass(e->rect());
+		return;
+	}
 	auto p = QPainter(this);
 	if (_paintPadding.isNull()) {
 		p.fillRect(e->rect(), _bg);
@@ -169,6 +178,74 @@ void ContentWidget::paintEvent(QPaintEvent *e) {
 			0,
 			std::min(0, (r.bottom() - _paintPadding.bottom())));
 		p.fillRect(r + padding, _bg);
+	}
+}
+
+void ContentWidget::paintGlass(QRect clip) {
+	// Tristegram: the chat background under the panel, sections as
+	// rounded frosted cards with see-through gaps between them.
+	const auto window = _controller->parentController();
+	Window::SectionWidget::PaintBackground(
+		window,
+		window->currentChatTheme(),
+		this,
+		clip);
+	auto p = QPainter(this);
+	auto tint = st::profileBg->c;
+	tint.setAlphaF(0.38);
+	p.fillRect(clip, tint);
+
+	const auto inner = _innerWrap ? _innerWrap->entity() : nullptr;
+	if (!inner) {
+		return;
+	}
+	auto gaps = std::vector<QRect>();
+	for (const auto divider : inner->findChildren<Ui::BoxContentDivider*>()) {
+		if (!divider->isVisible() || divider->height() <= 0) {
+			continue;
+		}
+		if (!divider->property("tristegramGlassGap").toBool()) {
+			divider->setProperty("tristegramGlassGap", true);
+			divider->setAttribute(Qt::WA_OpaquePaintEvent, false);
+			divider->update();
+		}
+		gaps.push_back(QRect(divider->mapTo(this, QPoint()), divider->size()));
+	}
+	ranges::sort(gaps, ranges::less(), &QRect::top);
+	const auto innerRect = QRect(inner->mapTo(this, QPoint()), inner->size());
+	const auto side = style::ConvertScale(8);
+	const auto radius = style::ConvertScale(16);
+	auto top = innerRect.top();
+	auto cards = std::vector<QRect>();
+	for (const auto &gap : gaps) {
+		if (gap.top() - top > radius) {
+			cards.push_back(QRect(side, top, width() - 2 * side, gap.top() - top));
+		}
+		top = gap.top() + gap.height();
+	}
+	if (innerRect.bottom() - top > radius) {
+		cards.push_back(QRect(side, top, width() - 2 * side, innerRect.bottom() - top));
+	}
+	auto hq = PainterHighQualityEnabler(p);
+	auto fill = st::profileBg->c;
+	fill.setAlphaF(0.78);
+	const auto rim = QColor(255, 255, 255, 26);
+	for (const auto &card : cards) {
+		if (!card.intersects(clip)) {
+			continue;
+		}
+		const auto r = QRectF(card).marginsRemoved({ 0., 3., 0., 3. });
+		p.setPen(Qt::NoPen);
+		p.setBrush(fill);
+		p.drawRoundedRect(r, radius, radius);
+		auto sheen = QLinearGradient(r.topLeft(), r.bottomLeft());
+		sheen.setColorAt(0., QColor(255, 255, 255, 14));
+		sheen.setColorAt(std::min(1., 120. / std::max(r.height(), 1.)), QColor(255, 255, 255, 0));
+		p.setBrush(sheen);
+		p.drawRoundedRect(r, radius, radius);
+		p.setBrush(Qt::NoBrush);
+		p.setPen(QPen(rim, 1.));
+		p.drawRoundedRect(r.marginsRemoved({ 0.5, 0.5, 0.5, 0.5 }), radius, radius);
 	}
 }
 

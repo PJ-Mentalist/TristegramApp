@@ -209,6 +209,7 @@ protected:
 
 	void resizeEvent(QResizeEvent *e) override;
 	void paintEvent(QPaintEvent *e) override;
+	void paintGlass(QRect clip);
 
 	void setScrollTopSkip(int scrollTopSkip);
 	void setScrollBottomSkip(int scrollBottomSkip);

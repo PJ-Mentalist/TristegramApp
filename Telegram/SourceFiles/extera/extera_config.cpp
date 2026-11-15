@@ -209,6 +209,7 @@ constexpr auto kSaveDelay = crl::time(1000);
 		{ u"tristegram_profile_glow"_q, true },
 		{ u"tristegram_glass_bars"_q, true },
 		{ u"tristegram_screen_record"_q, true },
+		{ u"tristegram_glass_info"_q, true },
 		{ u"tristegram_gradient_badges"_q, true },
 		{ u"tristegram_date_capsules"_q, true },
 		{ u"tristegram_gradient_active_chat"_q, true },

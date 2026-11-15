@@ -455,6 +455,21 @@ index 433b8f3..42763a6 100644
  }
  
  void Widget::paintToProxy() {
+diff --git a/ui/widgets/box_content_divider.cpp b/ui/widgets/box_content_divider.cpp
+index 948271f..e3e982a 100644
+--- a/ui/widgets/box_content_divider.cpp
++++ b/ui/widgets/box_content_divider.cpp
+@@ -27,6 +27,10 @@ BoxContentDivider::BoxContentDivider(
+ }
+ 
+ void BoxContentDivider::paintEvent(QPaintEvent *e) {
++	if (property("tristegramGlassGap").toBool()) {
++		// Tristegram: a see-through gap between glass cards.
++		return;
++	}
+ 	QPainter p(this);
+ 
+ 	p.fillRect(e->rect(), _st.bg);
 diff --git a/ui/widgets/fields/input_field.cpp b/ui/widgets/fields/input_field.cpp
 index cf7b90d..c5dcc63 100644
 --- a/ui/widgets/fields/input_field.cpp
