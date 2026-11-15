@@ -4275,6 +4275,11 @@ void PartTristegram(SectionBuilder &builder) {
 	builder.card([&] {
 		AddToggle(
 			builder,
+			u"tristegram_glass_menus"_q,
+			tr::lng_tristegram_glass_menus(),
+			{ u"glass"_q, u"blur"_q, u"menu"_q });
+		AddToggle(
+			builder,
 			u"tristegram_online_accent"_q,
 			tr::lng_tristegram_online_accent(),
 			{ u"online"_q, u"avatar"_q });

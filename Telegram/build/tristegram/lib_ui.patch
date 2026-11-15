@@ -265,6 +265,75 @@ index e2ba0d6..13f039b 100644
  
  rankAdminFg: #49a355; // admin badge text and pill, green
  rankOwnerFg: #956ac8; // owner badge text and pill, purple
+diff --git a/ui/layers/layer_widget.cpp b/ui/layers/layer_widget.cpp
+index f8b1aa6..980d083 100644
+--- a/ui/layers/layer_widget.cpp
++++ b/ui/layers/layer_widget.cpp
+@@ -5,6 +5,7 @@
+ // https://github.com/desktop-app/legal/blob/master/LEGAL
+ //
+ #include "ui/layers/layer_widget.h"
++#include "ui/widgets/popup_menu.h"
+ 
+ #include "ui/cached_special_layer_shadow_corners.h"
+ #include "ui/layers/box_layer_widget.h"
+@@ -40,6 +41,9 @@ public:
+ 	void removeBodyCache();
+ 	[[nodiscard]] bool hasBodyCache() const;
+ 	void refreshBodyCache(QPixmap &&bodyCache);
++	void setGlassBody(QImage &&image) {
++		_glassBody = std::move(image);
++	}
+ 	void startAnimation(Action action, crl::time duration = 0);
+ 	void skipAnimation(Action action, crl::time duration = 0);
+ 	void finishAnimating();
+@@ -63,6 +67,7 @@ private:
+ 	void animationCallback();
+ 
+ 	QPixmap _bodyCache;
++	QImage _glassBody;
+ 	QPixmap _mainMenuCache;
+ 	int _mainMenuCacheWidth = 0;
+ 	QPixmap _specialLayerCache;
+@@ -266,6 +271,11 @@ void LayerStackWidget::BackgroundWidget::paintEvent(QPaintEvent *e) {
+ 	p.setOpacity(bgOpacity);
+ 	auto overSpecialOpacity = (layerOpacity * specialLayerOpacity);
+ 	auto bg = myrtlrect(mainMenuRight, 0, width() - mainMenuRight, height());
++	if (!_glassBody.isNull()) {
++		// Tristegram: frosted glass behind boxes.
++		p.setRenderHint(QPainter::SmoothPixmapTransform);
++		p.drawImage(rect(), _glassBody);
++	}
+ 
+ 	if (_mainMenuCache.isNull() && mainMenuRight > 0) {
+ 		// All cache images are taken together with their shadows,
+@@ -547,6 +557,26 @@ void LayerStackWidget::setStyleOverrides(
+ }
+ 
+ void LayerStackWidget::setCacheImages() {
++	if (PopupMenu::GlassEnabled()
++		&& (currentLayer() || _specialLayer || _mainMenu)
++		&& parentWidget()) {
++		hideChildren();
++		auto image = Ui::GrabWidget(parentWidget()).toImage();
++		showChildren();
++		if (!image.isNull()) {
++			const auto full = image.size();
++			auto small = image.scaled(
++				std::max(1, full.width() / 8),
++				std::max(1, full.height() / 8),
++				Qt::IgnoreAspectRatio,
++				Qt::SmoothTransformation
++			).convertToFormat(QImage::Format_ARGB32_Premultiplied);
++			_background->setGlassBody(
++				Images::BlurLargeImage(std::move(small), 5));
++		}
++	} else {
++		_background->setGlassBody(QImage());
++	}
+ 	auto bodyCache = QPixmap(), mainMenuCache = QPixmap();
+ 	auto specialLayerCache = QPixmap();
+ 	if (_specialLayer) {
 diff --git a/ui/layers/layers.style b/ui/layers/layers.style
 index ebb7796..95c5329 100644
 --- a/ui/layers/layers.style
@@ -400,8 +469,23 @@ index ef96309..9249fb4 100644
  		auto borderStart = std::clamp(_borderAnimationStart, 0, width());
  		auto borderFrom
  			= int(base::SafeRound(borderStart * (1. - borderShownDegree)));
+diff --git a/ui/widgets/menu/menu.cpp b/ui/widgets/menu/menu.cpp
+index 56723aa..49c8941 100644
+--- a/ui/widgets/menu/menu.cpp
++++ b/ui/widgets/menu/menu.cpp
+@@ -54,7 +54,9 @@ void Menu::init() {
+ 
+ 	paintRequest(
+ 	) | rpl::on_next([=](const QRect &clip) {
+-		QPainter(this).fillRect(clip, _st.itemBg);
++		if (!property("tristegramGlass").toBool()) {
++			QPainter(this).fillRect(clip, _st.itemBg);
++		}
+ 	}, lifetime());
+ 
+ 	positionValue(
 diff --git a/ui/widgets/menu/menu_action.cpp b/ui/widgets/menu/menu_action.cpp
-index 4c16b67..436df33 100644
+index 4c16b67..574ec59 100644
 --- a/ui/widgets/menu/menu_action.cpp
 +++ b/ui/widgets/menu/menu_action.cpp
 @@ -10,6 +10,7 @@
@@ -412,14 +496,18 @@ index 4c16b67..436df33 100644
  
  namespace Ui::Menu {
  namespace {
-@@ -96,12 +97,19 @@ void Action::paintEvent(QPaintEvent *e) {
+@@ -96,12 +97,23 @@ void Action::paintEvent(QPaintEvent *e) {
  }
  
  void Action::paintBackground(QPainter &p, bool selected) {
 -	if (selected && _st.itemBgOver->c.alpha() < 255) {
 -		p.fillRect(0, 0, width(), _height, _st.itemBg);
 +	// Tristegram: rounded highlight with side insets, iOS-like.
-+	p.fillRect(QRect(0, 0, width(), _height), _st.itemBg);
++	const auto glass = parentWidget()
++		&& parentWidget()->property("tristegramGlass").toBool();
++	if (!glass) {
++		p.fillRect(QRect(0, 0, width(), _height), _st.itemBg);
++	}
 +	if (selected) {
 +		const auto inset = style::ConvertScale(6);
 +		const auto radius = style::ConvertScale(10);
@@ -437,7 +525,7 @@ index 4c16b67..436df33 100644
  }
  
  void Action::paintText(Painter &p) {
-@@ -118,7 +126,17 @@ void Action::paint(Painter &p) {
+@@ -118,7 +130,17 @@ void Action::paint(Painter &p) {
  	const auto selected = isSelected();
  	paintBackground(p, selected);
  	if (enabled) {
@@ -455,8 +543,42 @@ index 4c16b67..436df33 100644
  	}
  	if (const auto icon = (selected ? _iconOver : _icon)) {
  		icon->paint(p, _st.itemIconPosition, width());
+diff --git a/ui/widgets/menu/menu_multiline_action.cpp b/ui/widgets/menu/menu_multiline_action.cpp
+index db27772..06715bb 100644
+--- a/ui/widgets/menu/menu_multiline_action.cpp
++++ b/ui/widgets/menu/menu_multiline_action.cpp
+@@ -82,7 +82,11 @@ int MultilineAction::contentHeight() const {
+ void MultilineAction::paintEvent(QPaintEvent *e) {
+ 	auto p = QPainter(this);
+ 	const auto selected = isSelected();
+-	p.fillRect(rect(), selected ? _st.itemBgOver : _st.itemBg);
++	const auto glass = parentWidget()
++		&& parentWidget()->property("tristegramGlass").toBool();
++	if (selected || !glass) {
++		p.fillRect(rect(), selected ? _st.itemBgOver : _st.itemBg);
++	}
+ 	RippleButton::paintRipple(p, 0, 0);
+ 	if (const auto icon = (selected ? _iconOver : _icon)) {
+ 		icon->paint(p, _st.itemIconPosition, width());
+diff --git a/ui/widgets/menu/menu_separator.cpp b/ui/widgets/menu/menu_separator.cpp
+index 981d609..ab5640a 100644
+--- a/ui/widgets/menu/menu_separator.cpp
++++ b/ui/widgets/menu/menu_separator.cpp
+@@ -29,7 +29,11 @@ Separator::Separator(
+ 	) | rpl::on_next([=] {
+ 		Painter p(this);
+ 
+-		p.fillRect(0, 0, width(), _height, _bg);
++		const auto glass = parentWidget()
++			&& parentWidget()->property("tristegramGlass").toBool();
++		if (!glass) {
++			p.fillRect(0, 0, width(), _height, _bg);
++		}
+ 		p.fillRect(
+ 			_padding.left(),
+ 			_padding.top(),
 diff --git a/ui/widgets/popup_menu.cpp b/ui/widgets/popup_menu.cpp
-index 8a2ffc7..ff1e3a4 100644
+index 8a2ffc7..78b1c5b 100644
 --- a/ui/widgets/popup_menu.cpp
 +++ b/ui/widgets/popup_menu.cpp
 @@ -6,6 +6,8 @@
@@ -468,7 +590,99 @@ index 8a2ffc7..ff1e3a4 100644
  #include "base/platform/base_platform_info.h"
  #include "base/invoke_queued.h"
  #include "base/weak_qptr.h"
-@@ -265,6 +267,28 @@ void PopupMenu::updateRoundingOverlay() {
+@@ -172,6 +174,91 @@ void PopupMenu::init() {
+ 		setAttribute(Qt::WA_TranslucentBackground, false);
+ 		setAttribute(Qt::WA_OpaquePaintEvent, true);
+ 	}
++	setupGlass();
++}
++
++namespace {
++
++bool GlassMenus = true;
++
++} // namespace
++
++void PopupMenu::SetGlassEnabled(bool enabled) {
++	GlassMenus = enabled;
++}
++
++bool PopupMenu::GlassEnabled() {
++	return GlassMenus;
++}
++
++void PopupMenu::setupGlass() {
++	if (!GlassMenus || !_useTransparency) {
++		return;
++	}
++	_menu->setProperty("tristegramGlass", true);
++	_menu->setAttribute(Qt::WA_OpaquePaintEvent, false);
++	_glassBg.create(this);
++	_glassBg->setAttribute(Qt::WA_TransparentForMouseEvents);
++	_glassBg->lower();
++	sizeValue(
++	) | rpl::on_next([=](QSize size) {
++		_glassBg->setGeometry(QRect(QPoint(), size));
++		_glassBg->lower();
++	}, _glassBg->lifetime());
++	_glassBg->paintRequest(
++	) | rpl::on_next([=] {
++		if (_inner.isEmpty()) {
++			return;
++		}
++		auto p = QPainter(_glassBg.data());
++		p.setClipRect(_inner);
++		if (!_glassBackdrop.isNull()) {
++			p.drawImage(_inner.topLeft() + _glassOffset, _glassBackdrop);
++		}
++		auto tint = _st.menu.itemBg->c;
++		tint.setAlphaF(_glassBackdrop.isNull() ? 1. : 0.7);
++		p.fillRect(_inner, tint);
++	}, _glassBg->lifetime());
++}
++
++void PopupMenu::prepareGlass() {
++	_glassBackdrop = QImage();
++	if (!_glassBg || _inner.isEmpty()) {
++		return;
++	}
++	const auto parent = parentWidget();
++	const auto window = parent ? parent->window() : nullptr;
++	if (!window || window == this || !window->isVisible()) {
++		return;
++	}
++	const auto global = QRect(mapToGlobal(_inner.topLeft()), _inner.size());
++	const auto local = QRect(
++		window->mapFromGlobal(global.topLeft()),
++		global.size());
++	const auto part = local.intersected(window->rect());
++	if (part.width() < 8 || part.height() < 8) {
++		return;
++	}
++	auto image = window->grab(part).toImage();
++	if (image.isNull()) {
++		return;
++	}
++	const auto ratio = image.devicePixelRatio();
++	const auto full = image.size();
++	auto small = image.scaled(
++		std::max(1, full.width() / 6),
++		std::max(1, full.height() / 6),
++		Qt::IgnoreAspectRatio,
++		Qt::SmoothTransformation
++	).convertToFormat(QImage::Format_ARGB32_Premultiplied);
++	small = Images::BlurLargeImage(std::move(small), 4);
++	_glassBackdrop = small.scaled(
++		full,
++		Qt::IgnoreAspectRatio,
++		Qt::SmoothTransformation);
++	_glassBackdrop.setDevicePixelRatio(ratio);
++	_glassOffset = part.topLeft() - local.topLeft();
++	_glassBg->update();
+ }
+ 
+ not_null<PopupMenu*> PopupMenu::ensureSubmenu(
+@@ -265,6 +352,28 @@ void PopupMenu::updateRoundingOverlay() {
  		auto hq = PainterHighQualityEnabler(p);
  		p.setCompositionMode(QPainter::CompositionMode_DestinationIn);
  		_roundRect.paint(p, _inner, RectPart::AllCorners);
@@ -497,6 +711,48 @@ index 8a2ffc7..ff1e3a4 100644
  		if (!_grabbingForPanelAnimation) {
  			p.setCompositionMode(QPainter::CompositionMode_SourceOver);
  			_boxShadow.paint(p, _inner, _st.radius);
+@@ -1208,6 +1317,7 @@ bool PopupMenu::prepareGeometryFor(
+ }
+ 
+ void PopupMenu::showPrepared(TriggeredSource source) {
++	prepareGlass();
+ 	startShowAnimation();
+ 
+ 	if (::Platform::IsWindows()) {
+diff --git a/ui/widgets/popup_menu.h b/ui/widgets/popup_menu.h
+index 3d1a0e0..22bd7cb 100644
+--- a/ui/widgets/popup_menu.h
++++ b/ui/widgets/popup_menu.h
+@@ -27,6 +27,10 @@ class ScrollArea;
+ 
+ class PopupMenu : public RpWidget {
+ public:
++	// Tristegram: frosted glass menus, blurring the window under them.
++	static void SetGlassEnabled(bool enabled);
++	[[nodiscard]] static bool GlassEnabled();
++
+ 	enum class VerticalOrigin {
+ 		Top,
+ 		Bottom,
+@@ -222,6 +226,8 @@ private:
+ 		QWidget *parentActionWidget);
+ 	void showPrepared(TriggeredSource source);
+ 	void updateRoundingOverlay();
++	void setupGlass();
++	void prepareGlass();
+ 
+ 	const style::PopupMenu &_st;
+ 
+@@ -230,6 +236,9 @@ private:
+ 	object_ptr<ScrollArea> _scroll;
+ 	not_null<Menu::Menu*> _menu;
+ 	object_ptr<RpWidget> _roundingOverlay = { nullptr };
++	object_ptr<RpWidget> _glassBg = { nullptr };
++	QImage _glassBackdrop;
++	QPoint _glassOffset;
+ 
+ 	base::flat_map<
+ 		not_null<QAction*>,
 diff --git a/ui/widgets/widgets.style b/ui/widgets/widgets.style
 index 8b8df7d..d1ec8c0 100644
 --- a/ui/widgets/widgets.style

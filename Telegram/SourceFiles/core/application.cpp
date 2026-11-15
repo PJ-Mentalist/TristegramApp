@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "core/application.h"
 
 #include "extera/tristegram_fonts.h"
+#include "ui/widgets/popup_menu.h"
 #include "styles/style_chat.h"
 #include "data/data_forum_topic.h"
 #include "ui/emoji_config.h"
@@ -600,6 +601,13 @@ void Application::run() {
 		// Tristegram: bubble corner radius chosen in settings.
 		const_cast<int&>(st::bubbleRadiusLarge) = style::ConvertScale(radius);
 	}
+	Ui::PopupMenu::SetGlassEnabled(
+		Extera::Bool(u"tristegram_glass_menus"_q));
+	Extera::Config::Instance().boolChanges(
+		u"tristegram_glass_menus"_q
+	) | rpl::on_next([](bool enabled) {
+		Ui::PopupMenu::SetGlassEnabled(enabled);
+	}, _lifetime);
 	Ui::Accessible::Init();
 	Ui::InitTextOptions();
 	Ui::StartCachedCorners();
