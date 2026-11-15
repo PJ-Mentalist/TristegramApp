@@ -443,7 +443,7 @@ void PaintLiveWallpaper(
 
 void ChooseLiveWallpaperFile(not_null<Window::SessionController*> controller) {
 	FileDialog::GetOpenPath(
-		controller->widget(),
+		controller->widget().get(),
 		tr::lng_tgl_choose(tr::now),
 		u"GIF / MP4 (*.gif *.mp4 *.webm *.mov)"_q,
 		crl::guard(controller.get(), [=](FileDialog::OpenResult &&result) {

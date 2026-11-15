@@ -14,6 +14,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 
 #include <QtCore/QPointer>
 #include <QtGui/QPainterPath>
+#include <QtGui/QtEvents>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QMenu>
 #include <QtWidgets/QTextEdit>

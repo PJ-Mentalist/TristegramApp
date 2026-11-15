@@ -190,9 +190,12 @@ void SetupAccountArrows(
 			}
 		}
 		const auto count = int(ready.size());
-		const auto current = ranges::find(
+		const auto mine = &peer->session().account();
+		const auto current = ranges::find_if(
 			ready,
-			&peer->session().account());
+			[&](not_null<Main::Account*> account) {
+				return account.get() == mine;
+			});
 		if (count < 2 || current == ready.end()) {
 			left->hide();
 			right->hide();
@@ -224,7 +227,7 @@ void SetupAccountArrows(
 		if (!account) {
 			return;
 		}
-		const auto target = not_null(account);
+		const auto target = not_null<Main::Account*>(account);
 		// Switching closes this layer with the arrows, so do it later.
 		crl::on_main([=] {
 			Core::App().domain().maybeActivate(target);
