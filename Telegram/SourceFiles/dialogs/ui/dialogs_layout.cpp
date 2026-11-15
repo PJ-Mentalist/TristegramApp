@@ -588,23 +588,43 @@ void PaintRow(
 		style::ConvertScale(2),
 		roundedInset,
 		style::ConvertScale(2)));
-	if (context.active || context.selected) {
+	const auto hover = context.tristegramHover;
+	if (context.active || context.selected || hover > 0.) {
 		auto hq = PainterHighQualityEnabler(p);
 		p.setPen(Qt::NoPen);
+		auto shape = QRectF(rounded);
 		if (context.active
 			&& Extera::Bool(u"tristegram_gradient_active_chat"_q)) {
 			// Tristegram: the opened chat in the logo gradient.
+			const auto shown = std::clamp(context.tristegramActive, 0., 1.);
+			if (shown < 1.) {
+				const auto eased = 1. - std::pow(1. - shown, 3);
+				const auto cut = shape.width() * 0.35 * (1. - eased);
+				shape = shape.adjusted(cut / 2., 0, -cut / 2., 0);
+				p.setBrush(st::dialogsBgOver);
+				p.drawRoundedRect(
+					QRectF(rounded),
+					roundedRadius,
+					roundedRadius);
+				p.setOpacity(0.35 + 0.65 * eased);
+			}
 			const auto style = Tristegram::CurrentLogoStyle();
 			auto gradient = QLinearGradient(
-				rounded.topLeft(),
-				rounded.bottomRight());
+				shape.topLeft(),
+				shape.bottomRight());
 			gradient.setColorAt(0., style.from);
 			gradient.setColorAt(1., style.to);
 			p.setBrush(gradient);
-		} else {
+		} else if (context.active) {
 			p.setBrush(bg);
+		} else {
+			if (hover >= 0. && hover < 1.) {
+				p.setOpacity(hover);
+			}
+			p.setBrush(st::dialogsBgOver);
 		}
-		p.drawRoundedRect(rounded, roundedRadius, roundedRadius);
+		p.drawRoundedRect(shape, roundedRadius, roundedRadius);
+		p.setOpacity(1.);
 	}
 	if (!(flags & Flag::TopicJumpRipple)) {
 		auto ripple = context.active

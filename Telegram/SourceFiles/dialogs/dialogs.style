@@ -973,3 +973,7 @@ restoreWindowsOfferClose: IconButton(dialogsCancelSearchInPeer) {
 	rippleAreaPosition: point(0px, 1px);
 	rippleAreaSize: 28px;
 }
+
+// Tristegram: chat list motion.
+dialogsTristegramHoverDuration: 160;
+dialogsTristegramActiveDuration: 280;

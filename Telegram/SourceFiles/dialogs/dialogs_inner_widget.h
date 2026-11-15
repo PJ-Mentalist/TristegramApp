@@ -688,6 +688,13 @@ private:
 	int _collapsedPressed = -1;
 	bool _skipTopDialog = false;
 	Row *_selected = nullptr;
+	// Tristegram: chat list motion.
+	Key _tristegramHoverKey;
+	Key _tristegramHoverLeaveKey;
+	Ui::Animations::Simple _tristegramHoverIn;
+	Ui::Animations::Simple _tristegramHoverOut;
+	Key _tristegramActiveKey;
+	Ui::Animations::Simple _tristegramActiveIn;
 	Row *_pressed = nullptr;
 	MsgId _pressedTopicJumpRootId;
 	PeerId _pressedSublistJumpPeerId;

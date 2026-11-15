@@ -19,6 +19,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/text/text_options.h"
 #include "ui/painter.h"
 #include "styles/style_dialogs.h"
+#include "extera/extera_config.h"
+#include "extera/tristegram_logo.h"
 
 namespace HistoryView {
 namespace {
@@ -148,6 +150,45 @@ bool SendActionPainter::paint(
 		int outerWidth,
 		style::color color,
 		crl::time ms) {
+	if (_sendActionAnimation
+		&& !_tristegramLayer
+		&& Extera::Bool(u"tristegram_typing_gradient"_q)
+		&& (color->c != st::dialogsTextFgServiceActive->c)) {
+		// Tristegram: the typing line drawn in the logo gradient.
+		const auto ratio = style::DevicePixelRatio();
+		const auto pad = st::normalFont->height / 2;
+		const auto area = QRect(
+			x,
+			y - pad,
+			std::max(availableWidth, 1),
+			st::normalFont->height + 2 * pad);
+		auto layer = QImage(
+			area.size() * ratio,
+			QImage::Format_ARGB32_Premultiplied);
+		layer.setDevicePixelRatio(ratio);
+		layer.fill(Qt::transparent);
+		auto result = false;
+		{
+			auto q = Painter(&layer);
+			q.setFont(p.font());
+			q.translate(-area.topLeft());
+			_tristegramLayer = true;
+			result = paint(q, x, y, availableWidth, outerWidth, color, ms);
+			_tristegramLayer = false;
+			q.resetTransform();
+			q.setCompositionMode(QPainter::CompositionMode_SourceIn);
+			const auto style = Tristegram::CurrentLogoStyle();
+			auto gradient = QLinearGradient(
+				QPointF(0, 0),
+				QPointF(std::min(area.width(), st::normalFont->width(
+					_sendActionText.toString()) + 4 * pad), 0));
+			gradient.setColorAt(0., style.from);
+			gradient.setColorAt(1., style.to);
+			q.fillRect(QRect(QPoint(), area.size()), gradient);
+		}
+		p.drawImage(area.topLeft(), layer);
+		return result;
+	}
 	if (_sendActionAnimation) {
 		const auto animationWidth = _sendActionAnimation.width();
 		const auto extraAnimationWidth = _animationLeft

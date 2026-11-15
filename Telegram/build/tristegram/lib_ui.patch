@@ -922,6 +922,89 @@ index 3d1a0e0..22bd7cb 100644
  
  	base::flat_map<
  		not_null<QAction*>,
+diff --git a/ui/widgets/scroll_area.cpp b/ui/widgets/scroll_area.cpp
+index 67ff1f9..f906d33 100644
+--- a/ui/widgets/scroll_area.cpp
++++ b/ui/widgets/scroll_area.cpp
+@@ -289,6 +289,19 @@ void ScrollBar::setMoving(bool moving) {
+ 	}
+ }
+ 
++namespace {
++
++ScrollBar::BarGradient &TristegramBarGradient() {
++	static auto result = ScrollBar::BarGradient();
++	return result;
++}
++
++} // namespace
++
++void ScrollBar::SetBarGradient(BarGradient provider) {
++	TristegramBarGradient() = std::move(provider);
++}
++
+ void ScrollBar::paintEvent(QPaintEvent *e) {
+ 	if (!_bar.width() && !_bar.height()) {
+ 		hide();
+@@ -309,7 +322,42 @@ void ScrollBar::paintEvent(QPaintEvent *e) {
+ 	const auto radius = (_st->round < 0)
+ 		? (std::min(outer.width(), outer.height()) / 2.)
+ 		: _st->round;
+-	if (radius) {
++	const auto gradient = TristegramBarGradient()
++		? TristegramBarGradient()()
++		: std::pair<QColor, QColor>();
++	if (gradient.first.isValid() && gradient.second.isValid()) {
++		// Tristegram: a slim bar in the logo gradient that widens on hover.
++		PainterHighQualityEnabler hq(p);
++		const auto over = _a_barOver.value(
++			(_overbar || _moving) ? 1. : 0.);
++		const auto wide = _a_over.value((_over || _moving) ? 1. : 0.);
++		const auto full = _vertical ? _bar.width() : _bar.height();
++		const auto thin = std::max(full * (0.45 + 0.55 * wide), 2.);
++		const auto shrink = (full - thin) / 2.;
++		auto rect = QRectF(_bar);
++		rect = _vertical
++			? rect.adjusted(shrink, 0, -shrink, 0)
++			: rect.adjusted(0, shrink, 0, -shrink);
++		const auto alpha = opacity * (0.55 + 0.45 * over);
++		auto from = gradient.first;
++		auto to = gradient.second;
++		from.setAlphaF(from.alphaF() * alpha);
++		to.setAlphaF(to.alphaF() * alpha);
++		auto fill = QLinearGradient(
++			rect.topLeft(),
++			_vertical ? rect.bottomLeft() : rect.topRight());
++		fill.setColorAt(0., from);
++		fill.setColorAt(1., to);
++		const auto r = std::min(rect.width(), rect.height()) / 2.;
++		if (wide > 0.) {
++			auto track = bg;
++			track.setAlphaF(track.alphaF() * wide);
++			p.setBrush(track);
++			p.drawRoundedRect(outer, radius ? radius : r, radius ? radius : r);
++		}
++		p.setBrush(fill);
++		p.drawRoundedRect(rect, r, r);
++	} else if (radius) {
+ 		PainterHighQualityEnabler hq(p);
+ 		p.setBrush(bg);
+ 		p.drawRoundedRect(outer, radius, radius);
+diff --git a/ui/widgets/scroll_area.h b/ui/widgets/scroll_area.h
+index a05ab78..c1e7862 100644
+--- a/ui/widgets/scroll_area.h
++++ b/ui/widgets/scroll_area.h
+@@ -77,6 +77,10 @@ public:
+ 
+ 	void hideTimeout(crl::time dt);
+ 
++	// Tristegram: optional gradient for the bar (empty colors disable it).
++	using BarGradient = std::function<std::pair<QColor, QColor>()>;
++	static void SetBarGradient(BarGradient provider);
++
+ 	[[nodiscard]] auto shadowVisibilityChanged() const
+ 		-> rpl::producer<ShadowVisibility>;
+ 
 diff --git a/ui/widgets/widgets.style b/ui/widgets/widgets.style
 index 8b8df7d..8b0517a 100644
 --- a/ui/widgets/widgets.style

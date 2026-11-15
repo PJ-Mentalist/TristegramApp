@@ -78,6 +78,8 @@ private:
 	int _animationLeft = 0;
 	int _spacesCount = 0;
 
+	bool _tristegramLayer = false;
+
 };
 
 } // namespace HistoryView

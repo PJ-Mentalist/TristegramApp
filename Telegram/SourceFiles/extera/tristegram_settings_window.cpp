@@ -803,6 +803,29 @@ void FillLook(
 		AddConfigToggle(group, tr::lng_tristegram_ios_icons(tr::now), u"tristegram_ios_icons"_q);
 		AddConfigToggle(group, tr::lng_tristegram_compose_capsule(tr::now), u"tristegram_compose_capsule"_q);
 	}
+	AddLabel(content, tr::lng_tgs_new_design(tr::now));
+	{
+		const auto group = AddGroup(content);
+		AddConfigToggle(group, tr::lng_tgs_v_badges(tr::now), u"tristegram_gradient_badges"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_dates(tr::now), u"tristegram_date_capsules"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_active(tr::now), u"tristegram_gradient_active_chat"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_online(tr::now), u"tristegram_online_ring"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_send(tr::now), u"tristegram_send_capsule"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_files(tr::now), u"tristegram_file_tiles"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_appear(tr::now), u"tristegram_message_appear"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_bars(tr::now), u"tristegram_glass_bars"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_info(tr::now), u"tristegram_glass_info"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_glow(tr::now), u"tristegram_profile_glow"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_arrows(tr::now), u"tristegram_profile_arrows"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_music(tr::now), u"tristegram_header_music"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_downloads(tr::now), u"tristegram_downloads_window"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_record(tr::now), u"tristegram_screen_record"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_scrollbar(tr::now), u"tristegram_gradient_scrollbar"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_typing(tr::now), u"tristegram_typing_gradient"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_motion(tr::now), u"tristegram_chatlist_motion"_q);
+		// TRISTEGRAM_NEW_TOGGLES
+	}
+	AddNote(content, tr::lng_tgs_new_design_note(tr::now));
 	AddLabel(content, tr::lng_tgs_header(tr::now));
 	{
 		const auto group = AddGroup(content);

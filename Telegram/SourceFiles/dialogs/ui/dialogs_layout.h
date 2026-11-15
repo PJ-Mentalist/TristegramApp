@@ -77,6 +77,9 @@ struct PaintContext {
 	bool narrow = false;
 	bool displayUnreadInfo = false;
 	bool insideCommunity = false;
+	// Tristegram: hover fade (-1 when idle) and active row appear progress.
+	float64 tristegramHover = -1.;
+	float64 tristegramActive = 1.;
 };
 
 extern const char kOptionDialogsMuteIcon[];

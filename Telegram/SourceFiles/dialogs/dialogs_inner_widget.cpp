@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "dialogs/dialogs_inner_widget.h"
 
 #include "extera/extera_streamer.h"
+#include "extera/extera_config.h"
 
 #include "dialogs/dialogs_three_state_icon.h"
 #include "dialogs/ui/chat_search_empty.h"
@@ -1221,6 +1222,44 @@ void InnerWidget::paintEvent(QPaintEvent *e) {
 		// We translate painter down, but it'll be cropped below rect.
 		p.fillRect(rect(), context.currentBg);
 	});
+	const auto tristegramMotion = Extera::Bool(
+		u"tristegram_chatlist_motion"_q);
+	if (tristegramMotion) {
+		const auto hoverKey = _selected ? _selected->key() : Key();
+		if (hoverKey != _tristegramHoverKey) {
+			const auto was = _tristegramHoverIn.value(1.);
+			_tristegramHoverLeaveKey = _tristegramHoverKey;
+			_tristegramHoverKey = hoverKey;
+			_tristegramHoverOut.stop();
+			if (_tristegramHoverLeaveKey) {
+				_tristegramHoverOut.start(
+					[=] { update(); },
+					was,
+					0.,
+					st::dialogsTristegramHoverDuration);
+			}
+			_tristegramHoverIn.stop();
+			if (_tristegramHoverKey) {
+				_tristegramHoverIn.start(
+					[=] { update(); },
+					0.,
+					1.,
+					st::dialogsTristegramHoverDuration);
+			}
+		}
+	}
+	const auto tristegramHoverFor = [&](const Key &key) {
+		if (!tristegramMotion || !key) {
+			return -1.;
+		} else if (key == _tristegramHoverKey
+			&& _tristegramHoverIn.animating()) {
+			return _tristegramHoverIn.value(1.);
+		} else if (key == _tristegramHoverLeaveKey
+			&& _tristegramHoverOut.animating()) {
+			return _tristegramHoverOut.value(0.);
+		}
+		return -1.;
+	};
 	const auto paintRow = [&](
 			not_null<Row*> row,
 			bool selected,
@@ -1271,6 +1310,7 @@ void InnerWidget::paintEvent(QPaintEvent *e) {
 			? (row->key() == _chatPreviewRow.key)
 			: selected;
 		const auto cacheAllowed = _rowsScrollCache.scrolling()
+			&& (tristegramHoverFor(key) < 0.)
 			&& (!videoUserpic || !context.narrow)
 			&& !active
 			&& !cacheSelected
@@ -1362,6 +1402,22 @@ void InnerWidget::paintEvent(QPaintEvent *e) {
 			? childListShown.shown
 			: 0.;
 		context.active = active;
+		context.tristegramHover = tristegramHoverFor(key);
+		context.tristegramActive = 1.;
+		if (active && tristegramMotion) {
+			if (_tristegramActiveKey != key) {
+				const auto first = !_tristegramActiveKey;
+				_tristegramActiveKey = key;
+				if (!first) {
+					_tristegramActiveIn.start(
+						[=] { update(); },
+						0.,
+						1.,
+						st::dialogsTristegramActiveDuration);
+				}
+			}
+			context.tristegramActive = _tristegramActiveIn.value(1.);
+		}
 		context.selected = _menuRow.key
 			? (row->key() == _menuRow.key)
 			: _chatPreviewRow.key
