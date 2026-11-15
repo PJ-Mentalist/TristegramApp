@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "media/view/media_view_overlay_raster.h"
+#include "extera/tristegram_bubbles.h"
 
 #include "ui/painter.h"
 #include "media/stories/media_stories_view.h"
@@ -366,6 +367,14 @@ void OverlayWidget::RendererSW::validateOverControlImage() {
 	p.setPen(Qt::NoPen);
 	auto color = OverBackgroundColor();
 	color.setAlpha(alpha);
+	if (Tristegram::GlassViewerEnabled()) {
+		Tristegram::PaintGlassCircle(
+			p,
+			QRect(QPoint(), size),
+			color,
+			kOverBackgroundOpacity);
+		return;
+	}
 	p.setBrush(color);
 	p.drawEllipse(QRect(QPoint(), size));
 }

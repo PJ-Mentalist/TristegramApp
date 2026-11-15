@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "media/view/media_view_overlay_opengl.h"
+#include "extera/tristegram_bubbles.h"
 
 #include "data/data_peer_values.h" // AmPremiumValue.
 #include "ui/gl/gl_shader.h"
@@ -900,11 +901,22 @@ void OverlayWidget::RendererGL::validateControls() {
 				meta.icon->size() * _ifactor);
 			height += meta.icon->height();
 		}
-		auto hq = PainterHighQualityEnabler(p);
-		p.setPen(Qt::NoPen);
-		p.setBrush(OverBackgroundColor());
-		p.drawEllipse(
-			QRect(0, height, st::mediaviewIconOver, st::mediaviewIconOver));
+		if (Tristegram::GlassViewerEnabled()) {
+			Tristegram::PaintGlassCircle(
+				p,
+				QRect(0, height, st::mediaviewIconOver, st::mediaviewIconOver),
+				OverBackgroundColor(),
+				1.);
+		} else {
+			auto hq = PainterHighQualityEnabler(p);
+			p.setPen(Qt::NoPen);
+			p.setBrush(OverBackgroundColor());
+			p.drawEllipse(QRect(
+				0,
+				height,
+				st::mediaviewIconOver,
+				st::mediaviewIconOver));
+		}
 		_controlsTextures[index++] = QRect(
 			QPoint(0, height) * _ifactor,
 			QSize(st::mediaviewIconOver, st::mediaviewIconOver) * _ifactor);

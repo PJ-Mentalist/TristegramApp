@@ -8,6 +8,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "core/application.h"
 
 #include "ui/widgets/scroll_area.h"
+#include "ui/widgets/side_bar_button.h"
+#include "ui/widgets/menu/menu_action.h"
 
 #include "extera/tristegram_fonts.h"
 #include "ui/widgets/popup_menu.h"
@@ -624,6 +626,20 @@ void Application::run() {
 	});
 	Ui::TristegramAccent::SetFlagProvider([](const QString &key) {
 		return Extera::Bool(key);
+	});
+	Ui::Menu::Action::SetIconTiles(
+		Extera::Bool(u"tristegram_menu_tiles"_q));
+	Extera::Config::Instance().boolChanges(
+		u"tristegram_menu_tiles"_q
+	) | rpl::on_next([](bool enabled) {
+		Ui::Menu::Action::SetIconTiles(enabled);
+	}, _lifetime);
+	Ui::SideBarButton::SetActiveGradient([] {
+		if (!Extera::Bool(u"tristegram_folder_tiles"_q)) {
+			return std::pair<QColor, QColor>();
+		}
+		const auto style = Tristegram::CurrentLogoStyle();
+		return std::make_pair(style.from, style.to);
 	});
 	Ui::ScrollBar::SetBarGradient([] {
 		if (!Extera::Bool(u"tristegram_gradient_scrollbar"_q)) {

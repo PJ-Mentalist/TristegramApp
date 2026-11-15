@@ -104,4 +104,36 @@ void PaintGlassPill(QPainter &p, const QRect &fill, bool accent) {
 	p.setPen(Qt::NoPen);
 }
 
+bool GlassViewerEnabled() {
+	return Extera::Bool(u"tristegram_glass_viewer"_q);
+}
+
+void PaintGlassCircle(
+		QPainter &p,
+		const QRect &rect,
+		const QColor &base,
+		double sheenScale) {
+	auto hq = PainterHighQualityEnabler(p);
+	const auto r = QRectF(rect);
+	const auto alpha = [&](int value) {
+		return std::clamp(int(value * sheenScale), 0, 255);
+	};
+	p.setPen(Qt::NoPen);
+	p.setBrush(base);
+	p.drawEllipse(r);
+	auto sheen = QLinearGradient(r.topLeft(), r.bottomLeft());
+	sheen.setColorAt(0., QColor(255, 255, 255, alpha(150)));
+	sheen.setColorAt(0.5, QColor(255, 255, 255, alpha(20)));
+	sheen.setColorAt(1., QColor(255, 255, 255, 0));
+	p.setBrush(sheen);
+	p.drawEllipse(r.adjusted(1., 1., -1., -1.));
+	auto edge = QLinearGradient(r.topLeft(), r.bottomLeft());
+	edge.setColorAt(0., QColor(255, 255, 255, alpha(210)));
+	edge.setColorAt(1., QColor(255, 255, 255, alpha(60)));
+	p.setPen(QPen(QBrush(edge), 1.2));
+	p.setBrush(Qt::NoBrush);
+	p.drawEllipse(r.adjusted(0.6, 0.6, -0.6, -0.6));
+	p.setPen(Qt::NoPen);
+}
+
 } // namespace Tristegram

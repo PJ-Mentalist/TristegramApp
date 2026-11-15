@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "media/view/media_view_overlay_widget.h"
+#include "extera/tristegram_bubbles.h"
 
 #include "extera/extera_config.h"
 
@@ -7215,13 +7216,17 @@ void OverlayWidget::paintControls(
 			st::mediaviewRecognize },
 	};
 
+	const auto glassControls = Tristegram::GlassViewerEnabled();
 	renderer->paintControlsStart();
 	for (const auto &control : controls) {
 		if (!control.visible) {
 			continue;
 		}
 		const auto progress = overLevel(control.state);
-		const auto bg = progress;
+		// Tristegram: glass circles stay visible behind the controls.
+		const auto bg = (!_stories && glassControls)
+			? (0.55 + 0.45 * progress)
+			: progress;
 		const auto icon = controlOpacity(progress, control.nonbright);
 		renderer->paintControl(
 			control.state,

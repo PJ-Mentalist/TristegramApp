@@ -10153,6 +10153,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_tristegram_bgs_title" = "Chat background";
 "lng_tristegram_preview_tap" = "Tap the logo to play the animation";
 "lng_tristegram_glass_menus" = "Frosted glass menus";
+"lng_tgs_v_folders" = "Folder sidebar tiles";
+"lng_tgs_v_viewer" = "Glass media viewer buttons";
+"lng_tgs_v_tiles" = "Colored icon tiles in menus";
 "lng_tgs_v_shadow" = "Soft bubble shadow";
 "lng_tgs_v_cards" = "Replies and links as cards";
 "lng_tgs_v_voice" = "Gradient voice waveform";

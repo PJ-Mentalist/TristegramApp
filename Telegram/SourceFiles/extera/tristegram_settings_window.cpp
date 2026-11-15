@@ -827,6 +827,9 @@ void FillLook(
 		AddConfigToggle(group, tr::lng_tgs_v_cards(tr::now), u"tristegram_reply_cards"_q);
 		AddConfigToggle(group, tr::lng_tgs_v_voice(tr::now), u"tristegram_voice_gradient"_q);
 		AddConfigToggle(group, tr::lng_tgs_v_reactions(tr::now), u"tristegram_glass_reactions"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_folders(tr::now), u"tristegram_folder_tiles"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_viewer(tr::now), u"tristegram_glass_viewer"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_tiles(tr::now), u"tristegram_menu_tiles"_q);
 		// TRISTEGRAM_NEW_TOGGLES
 	}
 	AddNote(content, tr::lng_tgs_new_design_note(tr::now));

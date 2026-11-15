@@ -6,6 +6,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 
 class QPainter;
 class QRect;
+class QRectF;
 class QColor;
 
 namespace style {
@@ -25,5 +26,13 @@ void PaintQuoteCard(
 // Reaction pills with a glass sheen; accent pills in the logo gradient.
 [[nodiscard]] bool GlassReactionsEnabled();
 void PaintGlassPill(QPainter &p, const QRect &fill, bool accent);
+
+// Media viewer: control backgrounds as glass circles.
+[[nodiscard]] bool GlassViewerEnabled();
+void PaintGlassCircle(
+	QPainter &p,
+	const QRect &rect,
+	const QColor &base,
+	double sheenScale);
 
 } // namespace Tristegram

@@ -608,10 +608,16 @@ index 56723aa..49c8941 100644
  
  	positionValue(
 diff --git a/ui/widgets/menu/menu_action.cpp b/ui/widgets/menu/menu_action.cpp
-index 4c16b67..a5878ec 100644
+index 4c16b67..f6c0f79 100644
 --- a/ui/widgets/menu/menu_action.cpp
 +++ b/ui/widgets/menu/menu_action.cpp
-@@ -10,6 +10,7 @@
+@@ -6,10 +6,13 @@
+ //
+ #include "ui/widgets/menu/menu_action.h"
+ 
++#include <array>
++
+ #include "ui/effects/ripple_animation.h"
  #include "ui/painter.h"
  
  #include <QtGui/QtEvents>
@@ -619,7 +625,44 @@ index 4c16b67..a5878ec 100644
  
  namespace Ui::Menu {
  namespace {
-@@ -96,12 +97,23 @@ void Action::paintEvent(QPaintEvent *e) {
+@@ -90,18 +93,60 @@ QAccessible::State Action::accessibilityChildState(int index) const {
+ 	return state;
+ }
+ 
++namespace {
++
++bool TristegramIconTiles = false;
++
++[[nodiscard]] QColor TristegramTileColor(
++		const void *icon,
++		const QColor &fg) {
++	if (fg.red() > 170 && fg.green() < 120 && fg.blue() < 120) {
++		return QColor(0xFF, 0x45, 0x3A);
++	}
++	static const auto colors = std::array<QColor, 8>{ {
++		QColor(0x0A, 0x84, 0xFF),
++		QColor(0x30, 0xB0, 0x5A),
++		QColor(0xFF, 0x9F, 0x0A),
++		QColor(0x5E, 0x5C, 0xE6),
++		QColor(0xBF, 0x5A, 0xF2),
++		QColor(0x32, 0xAD, 0xE6),
++		QColor(0xFF, 0x37, 0x5F),
++		QColor(0x8E, 0x8E, 0x93),
++	} };
++	auto hash = quintptr(icon);
++	hash ^= (hash >> 7) ^ (hash >> 13);
++	return colors[(hash >> 3) % colors.size()];
++}
++
++} // namespace
++
++void Action::SetIconTiles(bool enabled) {
++	TristegramIconTiles = enabled;
++}
++
+ void Action::paintEvent(QPaintEvent *e) {
+ 	Painter p(this);
+ 	paint(p);
  }
  
  void Action::paintBackground(QPainter &p, bool selected) {
@@ -648,7 +691,7 @@ index 4c16b67..a5878ec 100644
  }
  
  void Action::paintText(Painter &p) {
-@@ -118,7 +130,17 @@ void Action::paint(Painter &p) {
+@@ -118,10 +163,45 @@ void Action::paint(Painter &p) {
  	const auto selected = isSelected();
  	paintBackground(p, selected);
  	if (enabled) {
@@ -665,7 +708,50 @@ index 4c16b67..a5878ec 100644
 +		p.restore();
  	}
  	if (const auto icon = (selected ? _iconOver : _icon)) {
- 		icon->paint(p, _st.itemIconPosition, width());
+-		icon->paint(p, _st.itemIconPosition, width());
++		if (TristegramIconTiles && !icon->empty()) {
++			const auto size = std::max(icon->width(), icon->height());
++			const auto extra = style::ConvertScale(1);
++			const auto tile = QRectF(
++				_st.itemIconPosition.x() - extra,
++				_st.itemIconPosition.y() - extra,
++				size + 2 * extra,
++				size + 2 * extra);
++			auto color = TristegramTileColor(_icon, _st.itemFg->c);
++			if (!enabled) {
++				color.setAlphaF(0.45);
++			}
++			{
++				auto hq = PainterHighQualityEnabler(p);
++				p.setPen(Qt::NoPen);
++				auto fill = QLinearGradient(tile.topLeft(), tile.bottomLeft());
++				fill.setColorAt(0., color.lighter(118));
++				fill.setColorAt(1., color);
++				p.setBrush(fill);
++				const auto radius = tile.width() * 0.27;
++				p.drawRoundedRect(tile, radius, radius);
++			}
++			icon->paint(p, _st.itemIconPosition, width(), QColor(255, 255, 255));
++		} else {
++			icon->paint(p, _st.itemIconPosition, width());
++		}
+ 	}
+ 	p.setPen(selected ? _st.itemFgOver : (enabled ? _st.itemFg : _st.itemFgDisabled));
+ 	paintText(p);
+diff --git a/ui/widgets/menu/menu_action.h b/ui/widgets/menu/menu_action.h
+index 2a2e689..c69d7b8 100644
+--- a/ui/widgets/menu/menu_action.h
++++ b/ui/widgets/menu/menu_action.h
+@@ -16,6 +16,9 @@ namespace Ui::Menu {
+ 
+ class Action : public ItemBase {
+ public:
++	// Tristegram: icons on colored rounded tiles, iOS settings style.
++	static void SetIconTiles(bool enabled);
++
+ 	Action(
+ 		not_null<Menu*> parent,
+ 		const style::Menu &st,
 diff --git a/ui/widgets/menu/menu_multiline_action.cpp b/ui/widgets/menu/menu_multiline_action.cpp
 index db27772..06715bb 100644
 --- a/ui/widgets/menu/menu_multiline_action.cpp
@@ -1005,6 +1091,79 @@ index a05ab78..c1e7862 100644
  	[[nodiscard]] auto shadowVisibilityChanged() const
  		-> rpl::producer<ShadowVisibility>;
  
+diff --git a/ui/widgets/side_bar_button.cpp b/ui/widgets/side_bar_button.cpp
+index 7633972..2ef0f23 100644
+--- a/ui/widgets/side_bar_button.cpp
++++ b/ui/widgets/side_bar_button.cpp
+@@ -162,12 +162,52 @@ int SideBarButton::resizeGetHeight(int newWidth) {
+ 	return result + std::max(add, 0);
+ }
+ 
++namespace {
++
++SideBarButton::ActiveGradient &TristegramActiveGradient() {
++	static auto result = SideBarButton::ActiveGradient();
++	return result;
++}
++
++} // namespace
++
++void SideBarButton::SetActiveGradient(ActiveGradient provider) {
++	TristegramActiveGradient() = std::move(provider);
++}
++
+ void SideBarButton::paintEvent(QPaintEvent *e) {
+ 	auto p = Painter(this);
+ 	const auto clip = e->rect();
+ 
+-	const auto &bg = _active ? _st.textBgActive : _st.textBg;
++	const auto gradient = TristegramActiveGradient()
++		? TristegramActiveGradient()()
++		: std::pair<QColor, QColor>();
++	const auto tile = gradient.first.isValid()
++		&& gradient.second.isValid();
++	const auto &bg = (_active && !tile) ? _st.textBgActive : _st.textBg;
+ 	p.fillRect(clip, bg);
++	if (tile && _active) {
++		auto hq = PainterHighQualityEnabler(p);
++		const auto inset = std::max(width() / 9, style::ConvertScale(4));
++		const auto vertical = style::ConvertScale(3);
++		const auto shape = QRectF(rect()).adjusted(
++			inset,
++			vertical,
++			-inset,
++			-vertical);
++		auto fill = QLinearGradient(shape.topLeft(), shape.bottomRight());
++		fill.setColorAt(0., gradient.first);
++		fill.setColorAt(1., gradient.second);
++		const auto radius = double(style::ConvertScale(14));
++		p.setPen(Qt::NoPen);
++		p.setBrush(fill);
++		p.drawRoundedRect(shape, radius, radius);
++		auto sheen = QLinearGradient(shape.topLeft(), shape.bottomLeft());
++		sheen.setColorAt(0., QColor(255, 255, 255, 40));
++		sheen.setColorAt(0.6, QColor(255, 255, 255, 0));
++		p.setBrush(sheen);
++		p.drawRoundedRect(shape, radius, radius);
++	}
+ 
+ 	RippleButton::paintRipple(p, 0, 0);
+ 
+diff --git a/ui/widgets/side_bar_button.h b/ui/widgets/side_bar_button.h
+index 5e9e3dc..c0f96dc 100644
+--- a/ui/widgets/side_bar_button.h
++++ b/ui/widgets/side_bar_button.h
+@@ -21,6 +21,10 @@ class RippleAnimation;
+ 
+ class SideBarButton final : public Ui::RippleButton {
+ public:
++	// Tristegram: active button as a rounded gradient tile.
++	using ActiveGradient = std::function<std::pair<QColor, QColor>()>;
++	static void SetActiveGradient(ActiveGradient provider);
++
+ 	SideBarButton(
+ 		not_null<QWidget*> parent,
+ 		const TextWithEntities &title,
 diff --git a/ui/widgets/widgets.style b/ui/widgets/widgets.style
 index 8b8df7d..8b0517a 100644
 --- a/ui/widgets/widgets.style
