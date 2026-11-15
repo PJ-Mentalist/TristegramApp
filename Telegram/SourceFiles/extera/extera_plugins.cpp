@@ -51,6 +51,7 @@
 #include "styles/style_settings.h"
 
 #include "extera/extera_plugin_trust.h"
+#include "extera/tristegram_plugin_bridge.h"
 
 #include <atomic>
 #include <chrono>
@@ -1059,6 +1060,62 @@ PyObject *NativeSbxToast(PyObject *self, PyObject *args) {
 	return !denied.contains(mtpTypeId(primes[0]));
 }
 
+// Tristegram: a plugin's local page in a Tristegram window.
+PyObject *NativeOpenWebview(PyObject *self, PyObject *args) {
+	const char *url = nullptr;
+	const char *title = nullptr;
+	if (!PyArg_ParseTuple(args, "ss", &url, &title)) {
+		return nullptr;
+	}
+	const auto urlValue = QString::fromUtf8(url);
+	const auto titleValue = QString::fromUtf8(title);
+	if (!urlValue.startsWith(u"http://127.0.0.1:"_q)
+		&& !urlValue.startsWith(u"http://localhost:"_q)) {
+		return PyBool_FromLong(0);
+	}
+	crl::on_main([=] {
+		if (!Tristegram::PluginBridge::OpenWebView(urlValue, titleValue)) {
+			// No webview on this system: the usual browser then.
+			UrlClickHandler::Open(urlValue);
+		}
+	});
+	return PyBool_FromLong(1);
+}
+
+// Tristegram: download a video from a chat for a plugin, by document id.
+PyObject *NativeFetchVideo(PyObject *self, PyObject *args) {
+	unsigned long long host = 0;
+	unsigned long long document = 0;
+	const char *path = nullptr;
+	long long dialog = 0;
+	long long message = 0;
+	if (!PyArg_ParseTuple(args, "KKs|LL", &host, &document, &path, &dialog, &message)) {
+		return nullptr;
+	}
+	const auto target = QFileInfo(QString::fromUtf8(path)).absoluteFilePath();
+	const auto base = QFileInfo(DataPath()).absoluteFilePath();
+	if (!target.startsWith(base) || target.contains(u".."_q)) {
+		return Py_BuildValue("i", 0);
+	}
+	QDir().mkpath(QFileInfo(target).absolutePath());
+	const auto job = Tristegram::PluginBridge::StartVideoFetch(
+		uint64(host),
+		uint64(document),
+		target,
+		int64(dialog),
+		int64(message));
+	return Py_BuildValue("i", job);
+}
+
+PyObject *NativeFetchVideoStatus(PyObject *self, PyObject *args) {
+	int job = 0;
+	if (!PyArg_ParseTuple(args, "i", &job)) {
+		return nullptr;
+	}
+	const auto status = Tristegram::PluginBridge::VideoFetchStatus(job);
+	return Py_BuildValue("s", status.toUtf8().constData());
+}
+
 PyObject *NativeOpenUrl(PyObject *self, PyObject *args) {
 	const char *text = nullptr;
 	if (!PyArg_ParseTuple(args, "s", &text)) {
@@ -1629,6 +1686,9 @@ PyMethodDef NativeMethods[] = {
 	{ "log", NativeLog, METH_VARARGS, nullptr },
 	{ "toast", NativeToast, METH_VARARGS, nullptr },
 	{ "open_url", NativeOpenUrl, METH_VARARGS, nullptr },
+	{ "open_webview", NativeOpenWebview, METH_VARARGS, nullptr },
+	{ "fetch_video", NativeFetchVideo, METH_VARARGS, nullptr },
+	{ "fetch_video_status", NativeFetchVideoStatus, METH_VARARGS, nullptr },
 	{ "copy", NativeCopy, METH_VARARGS, nullptr },
 	{ "pick_file", NativePickFile, METH_VARARGS, nullptr },
 	{ "send_message", NativeSendMessage, METH_VARARGS, nullptr },

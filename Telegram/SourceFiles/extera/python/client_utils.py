@@ -324,6 +324,36 @@ def get_user_config(account=None):
 get_locale_controller = _stub_controller("LocaleController")
 
 
+# Tristegram: a plugin's local page in a Tristegram window and videos from chats.
+
+def open_webview(url, title="") -> bool:
+    """Opens http://127.0.0.1:port/... of the plugin in a Tristegram window.
+    False when the client does not support it, then open the page yourself."""
+    try:
+        return bool(_extera.open_webview(str(url), str(title or "")))
+    except AttributeError:
+        return False
+
+
+def fetch_telegram_video(host_user_id, document_id, path, dialog_id=0, message_id=0) -> int:
+    """Finds the video by document id (chat with host_user_id first, then all
+    chats) and downloads it to path inside the plugin folder. Returns a job id,
+    0 when it is not supported."""
+    try:
+        return int(_extera.fetch_video(int(host_user_id or 0), int(document_id), str(path),
+                                       int(dialog_id or 0), int(message_id or 0)))
+    except AttributeError:
+        return 0
+
+
+def fetch_telegram_video_status(job) -> dict:
+    """{"state": "searching|loading|done|missing|error", "ready", "total", "path"}"""
+    try:
+        return json.loads(_extera.fetch_video_status(int(job)))
+    except Exception:
+        return {"state": "error"}
+
+
 def get_current_dialog_id() -> int:
     try:
         return int(_extera.current_peer())

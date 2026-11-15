@@ -2024,6 +2024,8 @@ PRIVATE
     extera/tristegram_recorder.h
     extera/tristegram_live_wallpaper.cpp
     extera/tristegram_live_wallpaper.h
+    extera/tristegram_plugin_bridge.cpp
+    extera/tristegram_plugin_bridge.h
     extera/tristegram_settings_window.h
     extera/extera_plugins.cpp
     extera/extera_plugins.h

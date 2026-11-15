@@ -1,4 +1,5 @@
 #include "extera/extera_plugins_ui.h"
+#include "data/data_media_types.h"
 
 #include "base/unixtime.h"
 
@@ -3431,6 +3432,19 @@ void AddMessageMenuItems(
 	const auto dialog = DialogId(item->history()->peer);
 	const auto messageId = item->id.bare;
 	const auto text = item->originalText().text;
+	// Tristegram: the video in the message, for plugins like Wtogether.
+	auto documentId = QString();
+	auto documentName = QString();
+	auto documentDuration = 0.;
+	if (const auto media = item->media()) {
+		if (const auto document = media->document()) {
+			if (document->isVideoFile() || document->isAnimation()) {
+				documentId = QString::number(document->id);
+				documentName = document->filename();
+				documentDuration = double(document->duration());
+			}
+		}
+	}
 	for (const auto &entry : MenuItems(u"message_context_menu"_q)) {
 		const auto id = entry.id;
 		menu->addAction(entry.text, [=] {
@@ -3438,6 +3452,9 @@ void AddMessageMenuItems(
 				{ u"peer"_q, double(dialog) },
 				{ u"message_id"_q, double(messageId) },
 				{ u"message_text"_q, text },
+				{ u"document_id"_q, documentId },
+				{ u"document_name"_q, documentName },
+				{ u"document_duration"_q, documentDuration },
 			});
 		}, &st::menuIconBotCommands);
 	}
