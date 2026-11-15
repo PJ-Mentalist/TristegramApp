@@ -2012,6 +2012,8 @@ PRIVATE
     extera/tristegram_settings_window.cpp
     extera/tristegram_downloads.cpp
     extera/tristegram_downloads.h
+    extera/tristegram_music.cpp
+    extera/tristegram_music.h
     extera/tristegram_settings_window.h
     extera/extera_plugins.cpp
     extera/extera_plugins.h

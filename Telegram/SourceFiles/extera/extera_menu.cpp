@@ -28,6 +28,7 @@
 #include <QtGui/QGuiApplication>
 #include "extera/extera_utils.h"
 #include "extera/extera_plugins_ui.h"
+#include "extera/tristegram_music.h"
 #include "history/history.h"
 #include "history/history_item.h"
 #include "history/history_item_components.h"
@@ -547,6 +548,7 @@ void AddMessageMenuActions(
 		}, &st::menuIconEdit);
 	}
 	Plugins::AddMessageMenuItems(menu, item);
+	Tristegram::AddPlaylistMenuActions(menu, item);
 	if (Bool(u"menu_details"_q)) {
 		const auto action = menu->addAction(
 			tr::lng_extera_menu_details(tr::now),

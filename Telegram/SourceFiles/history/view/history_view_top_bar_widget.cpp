@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/view/history_view_top_bar_widget.h"
 
 #include "extera/extera_config.h"
+#include "extera/tristegram_music.h"
 
 #include "history/history.h"
 #include "history/view/history_view_send_action.h"
@@ -1410,6 +1411,36 @@ void TopBarWidget::updateControlsGeometry() {
 			std::max(minLeft, maxLeft));
 		_info->moveToLeft(left, otherButtonsTop);
 		_leftTaken = left + _info->width();
+	}
+
+	// Tristegram: the music capsule in the free space on the left.
+	if (centered && Extera::Bool(u"tristegram_header_music"_q)) {
+		if (!_tristegramMusic) {
+			_tristegramMusic = Tristegram::CreateNowPlayingPill(
+				this,
+				_controller);
+		}
+		const auto skip = style::ConvertScale(10);
+		const auto from = (_back->isHidden() ? 0 : (_back->x() + _back->width()))
+			+ skip;
+		const auto infoLeft = _info->x();
+		const auto pillWidth = std::min(
+			style::ConvertScale(250),
+			infoLeft - skip - from);
+		const auto pillHeight = std::min(
+			style::ConvertScale(42),
+			height() - style::ConvertScale(8));
+		const auto fits = (pillWidth >= style::ConvertScale(150));
+		if (fits) {
+			_tristegramMusic->setGeometry(
+				from,
+				(height() - pillHeight) / 2,
+				pillWidth,
+				pillHeight);
+		}
+		_tristegramMusic->setVisible(fits && !_animatingMode);
+	} else if (_tristegramMusic) {
+		_tristegramMusic->hide();
 	}
 
 	updateMembersShowArea();
