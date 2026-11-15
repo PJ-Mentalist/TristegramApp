@@ -41,8 +41,10 @@ using namespace FFmpeg;
 // Encodes frames to H.264 in an mp4 file, lives on its own queue.
 class Encoder final {
 public:
-	Encoder(crl::weak_on_queue<Encoder> weak, QString path, int fps);
+	explicit Encoder(crl::weak_on_queue<Encoder> weak);
 	~Encoder();
+
+	void setup(QString path, int fps);
 
 	void push(QImage frame, crl::time timestamp);
 	void finish();
@@ -60,7 +62,7 @@ private:
 	static int64_t Seek(void *opaque, int64_t offset, int whence);
 
 	QFile _file;
-	const int _fps = 24;
+	int _fps = 24;
 	FormatPointer _format;
 	CodecPointer _codec;
 	AVStream *_stream = nullptr;
@@ -74,9 +76,12 @@ private:
 
 };
 
-Encoder::Encoder(crl::weak_on_queue<Encoder>, QString path, int fps)
-: _file(path)
-, _fps(fps) {
+Encoder::Encoder(crl::weak_on_queue<Encoder>) {
+}
+
+void Encoder::setup(QString path, int fps) {
+	_file.setFileName(path);
+	_fps = fps;
 }
 
 Encoder::~Encoder() {
@@ -335,9 +340,10 @@ public:
 		const auto stamp = QDateTime::currentDateTime().toString(
 			u"yyyy-MM-dd_HH-mm-ss"_q);
 		_path = RecordingsFolder() + u"/Tristegram_"_q + stamp + u".mp4"_q;
-		_encoder = std::make_unique<crl::object_on_queue<Encoder>>(
-			_path,
-			fps);
+		_encoder = std::make_unique<crl::object_on_queue<Encoder>>();
+		_encoder->with([path = _path, fps](Encoder &encoder) {
+			encoder.setup(path, fps);
+		});
 		_pending = std::make_shared<std::atomic<int>>(0);
 		_started = crl::now();
 		_recording = true;
