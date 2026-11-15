@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "extera/extera_config.h"
 #include "extera/tristegram_music.h"
+#include "window/section_widget.h"
 
 #include "history/history.h"
 #include "history/view/history_view_send_action.h"
@@ -574,6 +575,15 @@ void TopBarWidget::paintEvent(QPaintEvent *e) {
 		return;
 	}
 	updateConnectingState();
+	const auto glass = Extera::Bool(u"tristegram_glass_bars"_q);
+	if (glass) {
+		// Tristegram: the chat background goes on under a glassy header.
+		Window::SectionWidget::PaintBackground(
+			_controller,
+			_controller->currentChatTheme(),
+			this,
+			e->rect());
+	}
 	Painter p(this);
 
 	const auto selectedButtonsTop = countSelectedButtonsTop(
@@ -583,7 +593,18 @@ void TopBarWidget::paintEvent(QPaintEvent *e) {
 		: -st::topBarHeight;
 	const auto slidingTop = std::max(selectedButtonsTop, searchFieldTop);
 
-	p.fillRect(QRect(0, 0, width(), st::topBarHeight), st::topBarBg);
+	if (glass) {
+		const auto area = QRect(0, 0, width(), st::topBarHeight);
+		auto tint = st::topBarBg->c;
+		tint.setAlphaF(0.72);
+		p.fillRect(area, tint);
+		auto sheen = QLinearGradient(area.topLeft(), area.bottomLeft());
+		sheen.setColorAt(0., QColor(255, 255, 255, 18));
+		sheen.setColorAt(1., QColor(255, 255, 255, 0));
+		p.fillRect(area, sheen);
+	} else {
+		p.fillRect(QRect(0, 0, width(), st::topBarHeight), st::topBarBg);
+	}
 	if (slidingTop < 0) {
 		p.translate(0, slidingTop + st::topBarHeight);
 		paintTopBar(p);

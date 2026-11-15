@@ -11708,7 +11708,22 @@ void HistoryWidget::drawField(Painter &p, const QRect &rect) {
 	}
 	p.setInactive(
 		controller()->isGifPausedAtLeastFor(Window::GifPauseReason::Any));
-	p.fillRect(myrtlrect(0, backy, width(), backh), st::historyReplyBg);
+	if (Extera::Bool(u"tristegram_glass_bars"_q)) {
+		// Tristegram: a glassy compose area, the chat shows through it.
+		const auto area = myrtlrect(0, backy, width(), backh);
+		auto tint = st::historyReplyBg->c;
+		tint.setAlphaF(0.74);
+		p.fillRect(area, tint);
+		auto sheen = QLinearGradient(area.topLeft(), area.bottomLeft());
+		sheen.setColorAt(0., QColor(255, 255, 255, 16));
+		sheen.setColorAt(1., QColor(255, 255, 255, 0));
+		p.fillRect(area, sheen);
+		auto line = st::windowFg->c;
+		line.setAlphaF(0.08);
+		p.fillRect(area.x(), area.y(), area.width(), st::lineWidth, line);
+	} else {
+		p.fillRect(myrtlrect(0, backy, width(), backh), st::historyReplyBg);
+	}
 	if (_field->isVisible()
 		&& !_fieldDisabled
 		&& Extera::Bool(u"tristegram_compose_capsule"_q)) {
