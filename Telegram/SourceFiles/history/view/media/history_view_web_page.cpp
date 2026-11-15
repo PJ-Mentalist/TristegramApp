@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/media/history_view_web_page.h"
+#include "extera/tristegram_bubbles.h"
 
 #include "base/unixtime.h"
 #include "core/application.h"
@@ -1039,6 +1040,7 @@ void WebPage::draw(Painter &p, const PaintContext &context) const {
 			useColorIndex ? (colorIndex + 1) : 0)];
 	Ui::Text::ValidateQuotePaintCache(*cache, _st);
 	Ui::Text::FillQuotePaint(p, outer, *cache, _st);
+	Tristegram::PaintQuoteCard(p, outer, _st, cache->outlines[0]);
 	if (backgroundEmojiData) {
 		ValidateBackgroundEmoji(
 			backgroundEmojiId,

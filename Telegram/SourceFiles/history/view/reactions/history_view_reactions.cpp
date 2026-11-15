@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/reactions/history_view_reactions.h"
+#include "extera/tristegram_bubbles.h"
 
 #include "history/history_item.h"
 #include "history/history.h"
@@ -525,6 +526,10 @@ void InlineList::paint(
 				0,
 			});
 			paintSingleBg(p, fill, color, opacity);
+			if (!areTags() && Tristegram::GlassReactionsEnabled()) {
+				// Tristegram: glass reaction pills.
+				Tristegram::PaintGlassPill(p, fill, inbubble && chosen);
+			}
 			if (inbubble && !chosen) {
 				p.setOpacity(bubbleProgress);
 			}

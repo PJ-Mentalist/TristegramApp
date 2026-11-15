@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/view/media/history_view_document.h"
 #include "extera/extera_config.h"
 #include "extera/tristegram_downloads.h"
+#include "extera/tristegram_logo.h"
 
 #include "base/random.h"
 #include "lang/lang_keys.h"
@@ -264,6 +265,22 @@ void PaintWaveform(
 		? int(wf->size())
 		: ::Media::Player::kWaveformSamplesCount;
 	const auto activeWidth = base::SafeRound(availableWidth * progress);
+	// Tristegram: played part of the waveform in the logo gradient.
+	const auto activeBrush = [&] {
+		if (ttl
+			|| !Extera::Bool(u"tristegram_voice_gradient"_q)
+			|| (context.outbg
+				&& Extera::Bool(u"tristegram_bubble_gradient"_q))) {
+			return QBrush(active->c);
+		}
+		const auto style = Tristegram::CurrentLogoStyle();
+		auto gradient = QLinearGradient(
+			QPointF(0, 0),
+			QPointF(std::max(availableWidth, 1), 0));
+		gradient.setColorAt(0., style.from);
+		gradient.setColorAt(1., style.to);
+		return QBrush(gradient);
+	}();
 	const auto hoverWidth = (hoverProgress >= 0)
 		? base::SafeRound(availableWidth * hoverProgress)
 		: -1.;
@@ -306,14 +323,16 @@ void PaintWaveform(
 			const auto rightWidth = barWidth - leftWidth;
 			p.fillRect(
 				QRectF(barLeft, barTop, leftWidth, barHeight),
-				active);
+				activeBrush);
 			if (!ttl) {
 				p.fillRect(
 					QRectF(activeWidth, barTop, rightWidth, barHeight),
 					inactive);
 			}
 		} else if (!ttl || barLeft < activeWidth) {
-			const auto &color = (barLeft >= activeWidth) ? inactive : active;
+			const auto color = (barLeft >= activeWidth)
+				? QBrush(inactive->c)
+				: activeBrush;
 			p.fillRect(QRectF(barLeft, barTop, barWidth, barHeight), color);
 		}
 		if (hoverWidth >= 0) {

@@ -11,6 +11,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "extera/extera_badges.h"
 
 #include "extera/extera_config.h"
+#include "ui/chat/message_bubble.h"
 #include "extera/extera_streamer.h"
 
 #include "api/api_suggest_post.h"
@@ -2032,6 +2033,24 @@ void Message::draw(Painter &p, const PaintContext &context) const {
 						mapped.height(),
 					});
 				}
+			}
+		}
+		if (Extera::Bool(u"tristegram_soft_shadow"_q)) {
+			// Tristegram: a soft layered shadow under the bubble.
+			auto hq = PainterHighQualityEnabler(p);
+			p.setPen(Qt::NoPen);
+			const auto radius = double(Ui::BubbleRadiusLarge());
+			const auto base = QRectF(g);
+			const auto dark = context.st->dark()
+				? 2.2
+				: 1.;
+			for (auto i = 3; i > 0; --i) {
+				const auto spread = i * 0.8;
+				p.setBrush(QColor(0, 0, 0, int((4 + 3 * (3 - i)) * dark)));
+				p.drawRoundedRect(
+					base.adjusted(-spread, -spread * 0.3, spread, spread * 1.4),
+					radius + spread,
+					radius + spread);
 			}
 		}
 		if (!richPageGaps.empty()) {

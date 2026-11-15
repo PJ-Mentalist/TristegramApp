@@ -2016,6 +2016,8 @@ PRIVATE
     extera/tristegram_music.h
     extera/tristegram_profile.cpp
     extera/tristegram_profile.h
+    extera/tristegram_bubbles.cpp
+    extera/tristegram_bubbles.h
     extera/tristegram_cleaner.cpp
     extera/tristegram_cleaner.h
     extera/tristegram_effects.cpp

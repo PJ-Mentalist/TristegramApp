@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_reply.h"
+#include "extera/tristegram_bubbles.h"
 
 #include "extera/extera_config.h"
 #include "styles/style_settings.h"
@@ -895,6 +896,9 @@ void Reply::paint(
 	}
 	Ui::Text::ValidateQuotePaintCache(*cache, quoteSt);
 	Ui::Text::FillQuotePaint(p, rect, *cache, quoteSt);
+	if (inBubble) {
+		Tristegram::PaintQuoteCard(p, rect, quoteSt, cache->outlines[0]);
+	}
 	if (backgroundEmojiData) {
 		ValidateBackgroundEmoji(
 			backgroundEmojiId,

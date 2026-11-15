@@ -823,6 +823,10 @@ void FillLook(
 		AddConfigToggle(group, tr::lng_tgs_v_scrollbar(tr::now), u"tristegram_gradient_scrollbar"_q);
 		AddConfigToggle(group, tr::lng_tgs_v_typing(tr::now), u"tristegram_typing_gradient"_q);
 		AddConfigToggle(group, tr::lng_tgs_v_motion(tr::now), u"tristegram_chatlist_motion"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_shadow(tr::now), u"tristegram_soft_shadow"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_cards(tr::now), u"tristegram_reply_cards"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_voice(tr::now), u"tristegram_voice_gradient"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_reactions(tr::now), u"tristegram_glass_reactions"_q);
 		// TRISTEGRAM_NEW_TOGGLES
 	}
 	AddNote(content, tr::lng_tgs_new_design_note(tr::now));

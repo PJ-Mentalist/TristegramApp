@@ -10153,6 +10153,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_tristegram_bgs_title" = "Chat background";
 "lng_tristegram_preview_tap" = "Tap the logo to play the animation";
 "lng_tristegram_glass_menus" = "Frosted glass menus";
+"lng_tgs_v_shadow" = "Soft bubble shadow";
+"lng_tgs_v_cards" = "Replies and links as cards";
+"lng_tgs_v_voice" = "Gradient voice waveform";
+"lng_tgs_v_reactions" = "Glass reactions";
 "lng_tgs_new_design" = "What's new (v7-v10)";
 "lng_tgs_new_design_note" = "Every new effect can be turned off here.";
 "lng_tgs_v_badges" = "Gradient unread badges";
