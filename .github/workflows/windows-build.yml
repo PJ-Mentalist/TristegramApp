@@ -65,7 +65,11 @@ jobs:
       - name: Restore compiled objects
         uses: actions/cache/restore@v4
         with:
-          path: ${{ env.REPO_DIR }}\out
+          path: |
+            TBuild/tdesktop/out
+            !TBuild/tdesktop/out/Release/*.pdb
+            !TBuild/tdesktop/out/Release/*.ilk
+            !TBuild/tdesktop/out/Release/python
           key: win64-out-${{ github.ref_name }}-${{ github.run_id }}
           restore-keys: win64-out-${{ github.ref_name }}-
 
@@ -269,13 +273,6 @@ jobs:
           cd "$TBUILD/tdesktop"
           if [ -d out ]; then git rev-parse HEAD > out/tristegram_commit.txt; fi
 
-      - name: Upload compiled objects
-        if: always() && steps.build.outcome != 'skipped'
-        uses: actions/cache/save@v4
-        with:
-          path: ${{ env.REPO_DIR }}\out
-          key: win64-out-${{ github.ref_name }}-${{ github.run_id }}
-
       - name: Remove old compiled objects
         if: always() && steps.build.outcome != 'skipped'
         continue-on-error: true
@@ -283,8 +280,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Старые кэши объектов вытесняют кэш библиотек (лимит 10 ГБ),
-          # из-за этого библиотеки собирались заново. Оставляем только свежий.
+          # Кэш библиотек весит ~8,4 ГБ, лимит GitHub — 10 ГБ. Старые кэши
+          # объектов удаляем ДО сохранения нового, а в новый не кладём .pdb,
+          # .ilk и python, иначе GitHub вытесняет кэш библиотек.
           KEEP="win64-out-${{ github.ref_name }}-${{ github.run_id }}"
           gh cache list --repo "$GITHUB_REPOSITORY" --key win64-out- --limit 100 \
             --json id,key --jq ".[] | select(.key != \"$KEEP\") | .id" \
@@ -304,6 +302,17 @@ jobs:
             done
           fi
           gh cache list --repo "$GITHUB_REPOSITORY" --limit 100 || true
+
+      - name: Upload compiled objects
+        if: always() && steps.build.outcome != 'skipped'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            TBuild/tdesktop/out
+            !TBuild/tdesktop/out/Release/*.pdb
+            !TBuild/tdesktop/out/Release/*.ilk
+            !TBuild/tdesktop/out/Release/python
+          key: win64-out-${{ github.ref_name }}-${{ github.run_id }}
 
       - name: Package
         shell: pwsh
