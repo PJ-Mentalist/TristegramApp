@@ -125,6 +125,23 @@ void TopBarActionButton::paintEvent(QPaintEvent *e) {
 	{
 		auto hq = PainterHighQualityEnabler(p);
 		p.drawRoundedRect(rect(), st::boxRadius, st::boxRadius);
+		// Tristegram: glassy buttons, a sheen from the top and a thin rim.
+		{
+			const auto r = QRectF(rect());
+			auto sheen = QLinearGradient(r.topLeft(), r.bottomLeft());
+			sheen.setColorAt(0., QColor(255, 255, 255, 30));
+			sheen.setColorAt(0.6, QColor(255, 255, 255, 0));
+			p.setBrush(sheen);
+			p.drawRoundedRect(r, st::boxRadius, st::boxRadius);
+			p.setBrush(Qt::NoBrush);
+			p.setPen(QPen(QColor(255, 255, 255, 34), 1.));
+			p.drawRoundedRect(
+				r.marginsRemoved({ 0.5, 0.5, 0.5, 0.5 }),
+				st::boxRadius - 0.5,
+				st::boxRadius - 0.5);
+			p.setPen(Qt::NoPen);
+			p.setBrush(_bgColor);
+		}
 
 		const auto hovered = _rippleColor
 			? _overAnimation.value(isOver() ? 1. : 0.)

@@ -195,6 +195,8 @@ constexpr auto kSaveDelay = crl::time(1000);
 		{ u"menu_quick_row"_q, true },
 		{ u"tristegram_downloads_window"_q, true },
 		{ u"tristegram_header_music"_q, true },
+		{ u"tristegram_profile_arrows"_q, true },
+		{ u"tristegram_profile_glow"_q, true },
 		{ u"tristegram_gradient_badges"_q, true },
 		{ u"tristegram_date_capsules"_q, true },
 		{ u"tristegram_gradient_active_chat"_q, true },

@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "info/info_layer_widget.h"
 
+#include "extera/tristegram_profile.h"
+
 #include "info/info_content_widget.h"
 #include "info/info_top_bar.h"
 #include "info/info_memento.h"
@@ -165,6 +167,13 @@ void LayerWidget::showFinished() {
 void LayerWidget::parentResized() {
 	if (!_contentWrap) {
 		return;
+	}
+	if (!_tristegramArrows && parentWidget()) {
+		_tristegramArrows = true;
+		if (const auto peer = _contentWrap->key().peer()) {
+			// Tristegram: arrows that switch accounts around my profile.
+			Tristegram::SetupAccountArrows(this, peer);
+		}
 	}
 
 	auto parentSize = parentWidget()->size();

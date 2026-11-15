@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "info/profile/info_profile_top_bar.h"
+#include "extera/tristegram_profile.h"
 
 #include "settings/sections/settings_extera.h"
 
@@ -2980,6 +2981,19 @@ void TopBar::paintEvent(QPaintEvent *e) {
 	}
 	if (!_hasGradientBg) {
 		paintEdges(p, clipBounds);
+		// Tristegram: a soft glow of the logo colors behind the photo.
+		{
+			auto clip = QPainterPath();
+			const auto radius = st::boxRadius;
+			clip.addRoundedRect(
+				QRectF(rect() + QMargins{ 0, 0, 0, radius + 1 }),
+				radius,
+				radius);
+			p.save();
+			p.setClipPath(clip, Qt::IntersectClip);
+			Tristegram::PaintProfileGlow(p, rect(), geometry);
+			p.restore();
+		}
 	} else {
 		const auto x = (width()
 			- _cachedGradient.width() / style::DevicePixelRatio())
@@ -3012,9 +3026,21 @@ void TopBar::paintEvent(QPaintEvent *e) {
 		paintPinnedToTopGifts(p, clipBounds, geometry);
 	}
 
-	if (clipBounds.intersects(geometry)) {
+	if (clipBounds.intersects(geometry.marginsAdded({ 8, 8, 8, 8 }))) {
 		paintUserpic(p, geometry);
 		paintStoryOutline(p, geometry);
+		if (!_hasStories || _storySegments.empty()) {
+			const auto alpha = std::clamp(
+				(_progress.current() - kStoryOutlineFadeEnd)
+					/ kStoryOutlineFadeRange,
+				0.,
+				1.);
+			if (alpha > 0.) {
+				p.setOpacity(alpha);
+				Tristegram::PaintProfileRing(p, geometry);
+				p.setOpacity(1.);
+			}
+		}
 	}
 
 	paintTabSubtitle(p);

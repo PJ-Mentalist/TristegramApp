@@ -80,6 +80,7 @@ private:
 	int _desiredHeight = 0;
 	int _contentWrapHeight = 0;
 	int _savedHeight = 0;
+	bool _tristegramArrows = false;
 	Ui::Animations::Simple _heightAnimation;
 	Ui::Animations::Simple _savedHeightAnimation;
 	bool _heightAnimated = false;
