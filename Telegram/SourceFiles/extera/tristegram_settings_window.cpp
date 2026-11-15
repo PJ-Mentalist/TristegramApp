@@ -762,9 +762,12 @@ void SwitchLogoToCustom() {
 
 void OpenNative(
 		not_null<Window::SessionController*> controller,
-		Settings::Type type) {
+		Settings::Type type,
+		bool bypass = false) {
 	controller->hideLayer(anim::type::instant);
+	BypassOnce = bypass;
 	controller->showSettings(type);
+	BypassOnce = false;
 }
 
 void FillLook(
@@ -1016,14 +1019,6 @@ void FillThemes(
 			[] { Config().setBool(u"tristegram_bubble_gradient"_q, true); });
 	}
 	AddNote(content, tr::lng_tristegram_bubbles_about(tr::now));
-	{
-		const auto group = AddGroup(content);
-		AddActionRow(
-			group,
-			tr::lng_tristegram_chat_theme(tr::now),
-			nullptr,
-			[=] { OpenNative(controller, Settings::ChatId()); });
-	}
 }
 
 void FillBackground(
@@ -1223,7 +1218,7 @@ void FillChats(
 			group,
 			tr::lng_tgs_chat_settings(tr::now),
 			nullptr,
-			[=] { OpenNative(controller, Settings::ChatId()); });
+			[=] { OpenNative(controller, Settings::ChatId(), true); });
 	}
 	AddNote(content, tr::lng_tristegram_tabs_about(tr::now));
 }
@@ -1410,11 +1405,14 @@ SettingsWindow::SettingsWindow(
 	};
 	const auto controllerPtr = _controller;
 	const auto open = [=](Settings::Type type) {
-		return [=] { controllerPtr->showSettings(type); };
+		return [=] {
+			BypassOnce = true;
+			controllerPtr->showSettings(type);
+			BypassOnce = false;
+		};
 	};
 	native(tr::lng_tgs_n_notifications(tr::now), st::menuIconNotifications, QColor(0xF2, 0x54, 0x5B), open(Settings::NotificationsId()), true);
 	native(tr::lng_tgs_n_privacy(tr::now), st::menuIconLock, QColor(0x5B, 0x6B, 0xE8), open(Settings::PrivacySecurityId()));
-	native(tr::lng_tgs_n_chats(tr::now), st::menuIconChats, QColor(0xF0, 0x8A, 0x3A), open(Settings::ChatId()));
 	native(tr::lng_tgs_n_folders(tr::now), st::menuIconAddToFolder, QColor(0x2F, 0x8C, 0xF0), open(Settings::FoldersId()));
 	native(tr::lng_tgs_n_advanced(tr::now), st::menuIconManage, QColor(0x8E, 0x8E, 0x93), open(Settings::AdvancedId()));
 	native(tr::lng_tgs_n_devices(tr::now), st::menuIconDevices, QColor(0x3C, 0xB3, 0x71), open(Settings::SessionsId()));
@@ -1423,6 +1421,7 @@ SettingsWindow::SettingsWindow(
 	native(tr::lng_tgs_n_classic(tr::now), st::menuIconSettings, QColor(0x8E, 0x8E, 0x93), [=] {
 		BypassOnce = true;
 		controllerPtr->showSettings(Settings::MainId());
+		BypassOnce = false;
 	});
 
 	setupNav();
@@ -1728,14 +1727,24 @@ void ShowSettingsWindow(not_null<Window::SessionController*> controller) {
 	}));
 }
 
-bool InterceptMainSettings(
-		not_null<Window::SessionController*> controller) {
-	if (BypassOnce) {
-		BypassOnce = false;
+bool InterceptSettings(
+		not_null<Window::SessionController*> controller,
+		const Settings::Type &type) {
+	if (BypassOnce || !Extera::Bool(u"tristegram_settings_window"_q)) {
 		return false;
+	} else if (type == Settings::MainId()) {
+		ShowSettingsWindow(controller);
+		return true;
+	} else if (type == Settings::ChatId()) {
+		// The classic Chat Settings page with themes and accent colors
+		// is replaced by our "Themes" section.
+		Config().setInt(
+			u"tristegram_settings_section"_q,
+			int(Section::Themes));
+		ShowSettingsWindow(controller);
+		return true;
 	}
-	ShowSettingsWindow(controller);
-	return true;
+	return false;
 }
 
 } // namespace Tristegram

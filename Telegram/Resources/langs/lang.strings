@@ -10232,7 +10232,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_tgs_radius_note" = "The bubble radius is applied after a restart.";
 "lng_tgs_tabs" = "Tabs above the list";
 "lng_tgs_folders" = "Folders";
-"lng_tgs_chat_settings" = "More chat settings";
+"lng_tgs_chat_settings" = "Sending, stickers and emoji";
 "lng_tgs_hide_phone" = "Hide my phone number";
 "lng_tgs_hide_mode" = "Hide mode";
 "lng_tgs_hide_note" = "Blurs chats for streams, screen sharing and crowded places.";

@@ -4,6 +4,8 @@ Telegram Desktop. Licensed under GNU GPL v3.
 */
 #pragma once
 
+#include "settings/settings_type.h"
+
 namespace Window {
 class SessionController;
 } // namespace Window
@@ -15,10 +17,11 @@ namespace Tristegram {
 // right. It replaces the main Telegram settings page.
 void ShowSettingsWindow(not_null<Window::SessionController*> controller);
 
-// Called when the main settings page is requested. Shows the Tristegram
-// window instead and returns true, unless the classic page was asked for
-// from inside the window.
-[[nodiscard]] bool InterceptMainSettings(
-	not_null<Window::SessionController*> controller);
+// Called when a settings page is requested. For the main page and the
+// classic Chat Settings page shows the Tristegram window instead and
+// returns true, unless the page was asked for from inside the window.
+[[nodiscard]] bool InterceptSettings(
+	not_null<Window::SessionController*> controller,
+	const Settings::Type &type);
 
 } // namespace Tristegram

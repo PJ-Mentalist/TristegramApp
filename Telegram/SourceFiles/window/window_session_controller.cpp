@@ -1647,9 +1647,7 @@ void SessionNavigation::showSettings(
 		Settings::Type type,
 		const SectionShow &params) {
 	// Tristegram: our settings window instead of the main page.
-	if (type == Settings::MainId()
-		&& Extera::Bool(u"tristegram_settings_window"_q)
-		&& Tristegram::InterceptMainSettings(parentController())) {
+	if (Tristegram::InterceptSettings(parentController(), type)) {
 		return;
 	}
 	showSection(
