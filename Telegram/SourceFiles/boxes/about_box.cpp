@@ -63,9 +63,9 @@ rpl::producer<TextWithEntities> Text3() {
 			"github.com/PJ-Mentalist/Tristegram",
 			"https://github.com/PJ-Mentalist/Tristegram")),
 		lt_channel_link,
-		rpl::single(tr::link("@exDesktop", "https://t.me/exDesktop")),
+		rpl::single(tr::link("@Tristegram", "https://t.me/Tristegram")),
 		lt_chat_link,
-		rpl::single(tr::link("@exDesktopChat", "https://t.me/exDesktopChat")),
+		rpl::single(tr::link("@TristePlugins", "https://t.me/TristePlugins")),
 		tr::marked);
 }
 

@@ -4,6 +4,7 @@
 #include "core/application.h"
 #include "core/version.h"
 #include "extera/extera_config.h"
+#include "extera/tristegram_logo.h"
 #include "styles/style_boxes.h"
 #include "ui/widgets/checkbox.h"
 #include "ui/boxes/confirm_box.h"
@@ -78,21 +79,15 @@ void FillUnofficialInfo(not_null<Ui::VerticalLayout*> container) {
 	Ui::AddSkip(container);
 	AddLinkButton(
 		container,
-		tr::lng_extera_welcome_site(),
-		u"exteradesktop.xyz"_q,
-		u"https://exteradesktop.xyz"_q,
-		&st::exteraIconWebsite);
-	AddLinkButton(
-		container,
 		tr::lng_extera_welcome_dev(),
-		u"@metawka"_q,
-		u"https://t.me/metawka"_q,
+		u"@Tristepin"_q,
+		u"https://t.me/Tristepin"_q,
 		&st::exteraIconDeveloper);
 	AddLinkButton(
 		container,
 		tr::lng_extera_welcome_channel(),
-		u"@exDesktop"_q,
-		u"https://t.me/exDesktop"_q,
+		u"@Tristegram"_q,
+		u"https://t.me/Tristegram"_q,
 		&st::exteraIconChannel);
 }
 
@@ -256,36 +251,38 @@ void ShowWelcomeBox(not_null<Window::SessionController*> controller) {
 			) | rpl::on_next([=] {
 				auto p = QPainter(logo);
 				auto hq = PainterHighQualityEnabler(p);
-				p.drawImage(
-					QRect((logo->width() - size) / 2, 0, size, size),
-					Window::Logo());
+				// Our vector logo in the user's colors, the glow fits
+				// inside the widget.
+				const auto inner = size * 100 / 132;
+				Tristegram::PaintLogo(
+					p,
+					QRectF(
+						(logo->width() - inner) / 2.,
+						(size - inner) / 2.,
+						inner,
+						inner),
+					Tristegram::CurrentLogoStyle());
 			}, logo->lifetime());
 			addTitle(tr::lng_exd_wizard_welcome());
 			addText(tr::lng_exd_wizard_welcome_text());
 			AddLinkButton(
 				content,
 				tr::lng_extera_port_developer(),
-				u"@metawka"_q,
-				u"https://t.me/metawka"_q,
+				u"@Tristepin"_q,
+				u"https://t.me/Tristepin"_q,
 				&st::exteraIconDeveloper);
 			AddLinkButton(
 				content,
 				tr::lng_extera_channel(),
-				u"@exDesktop"_q,
-				u"https://t.me/exDesktop"_q,
+				u"@Tristegram"_q,
+				u"https://t.me/Tristegram"_q,
 				&st::exteraIconChannel);
 			AddLinkButton(
 				content,
 				tr::lng_extera_forum(),
-				u"@exDesktopChat"_q,
-				u"https://t.me/exDesktopChat"_q,
-				&st::exteraIconForum);
-			AddLinkButton(
-				content,
-				tr::lng_extera_website(),
-				u"exteradesktop.xyz"_q,
-				u"https://exteradesktop.xyz"_q,
-				&st::exteraIconWebsite);
+				u"@TristePlugins"_q,
+				u"https://t.me/TristePlugins"_q,
+				&st::exteraIconPlugins);
 			box->addButton(tr::lng_exd_wizard_setup(), [=] {
 				crl::on_main(box, [=] {
 					state->step = 1;

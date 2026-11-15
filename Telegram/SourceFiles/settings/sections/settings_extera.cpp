@@ -936,8 +936,8 @@ void AddSupportSteps(not_null<Ui::GenericBox*> box) {
 		tr::lng_exd_support_step2_text(
 			lt_user,
 			rpl::single(Ui::Text::Link(
-				u"@metawka"_q,
-				u"https://t.me/metawka"_q)),
+				u"@Tristepin"_q,
+				u"https://t.me/Tristepin"_q)),
 			tr::marked));
 	step(
 		&st::menuIconPremium,
@@ -1044,7 +1044,7 @@ void ShowBadgeInfoBox(not_null<Window::SessionController*> controller) {
 		}, preview->lifetime());
 
 		box->addButton(tr::lng_exd_badge_contact(), [=] {
-			UrlClickHandler::Open(u"https://t.me/metawka"_q);
+			UrlClickHandler::Open(u"https://t.me/Tristepin"_q);
 			box->closeBox();
 		});
 	}));
@@ -2915,30 +2915,23 @@ void PartMain2(SectionBuilder &builder) {
 			builder,
 			u"developer"_q,
 			tr::lng_extera_port_developer(),
-			u"@metawka"_q,
-			u"https://t.me/metawka"_q,
+			u"@Tristepin"_q,
+			u"https://t.me/Tristepin"_q,
 			{ &st::exteraIconDeveloper });
 		AddLink(
 			builder,
 			u"channel"_q,
 			tr::lng_extera_channel(),
-			u"@exDesktop"_q,
-			u"https://t.me/exDesktop"_q,
+			u"@Tristegram"_q,
+			u"https://t.me/Tristegram"_q,
 			{ &st::exteraIconChannel });
 		AddLink(
 			builder,
 			u"forum"_q,
 			tr::lng_extera_forum(),
-			u"@exDesktopChat"_q,
-			u"https://t.me/exDesktopChat"_q,
-			{ &st::exteraIconForum });
-		AddLink(
-			builder,
-			u"website"_q,
-			tr::lng_extera_website(),
-			u"exteradesktop.xyz"_q,
-			u"https://exteradesktop.xyz"_q,
-			{ &st::exteraIconWebsite });
+			u"@TristePlugins"_q,
+			u"https://t.me/TristePlugins"_q,
+			{ &st::exteraIconPlugins });
 	});
 }
 

@@ -9149,7 +9149,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_extera_plugins" = "Plugins";
 "lng_extera_other" = "Other";
 "lng_extera_channel" = "Channel";
-"lng_extera_forum" = "Chats";
+"lng_extera_forum" = "Plugins";
 "lng_extera_website" = "Website";
 "lng_extera_crowdin" = "Translate";
 "lng_extera_badge_developer" = "{name} is the developer of Tristegram.";
@@ -9716,7 +9716,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_exd_changelog_loading" = "Loading...";
 "lng_exd_changelog_failed" = "Could not load the changelog. Check your connection.";
 "lng_exd_changelog_translate" = "Translate";
-"lng_exd_about_links" = "Website: {site_link}\nNews: {channel_link}, chat: {chat_link}";
+"lng_exd_about_links" = "Source code: {site_link}\nNews: {channel_link}, plugins: {chat_link}";
 "lng_exd_plugin_view_code" = "View Code";
 "lng_exd_plugin_code_empty" = "The plugin file could not be read.";
 "lng_exd_plugin_code_copy" = "Copy";
@@ -9782,7 +9782,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_exd_notify_sound_reset" = "Restore default sound";
 "lng_exd_notify_about" = "The position applies to Tristegram notifications. The sound file is used for all chats without their own sound.";
 "lng_exd_wizard_welcome" = "Welcome to Tristegram!";
-"lng_exd_wizard_welcome_text" = "Unofficial Telegram client with features from community mobile clients.";
+"lng_exd_wizard_welcome_text" = "An independent Telegram client with plugins and full customization. Built on exDesktop sources.";
 "lng_exd_wizard_setup" = "Set Up";
 "lng_exd_wizard_icon" = "App Icon";
 "lng_exd_wizard_next" = "Next";

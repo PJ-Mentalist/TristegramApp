@@ -412,7 +412,7 @@ MainMenu::MainMenu(
 
 	_telegram->setMarkedText(tr::link(
 		AppName.utf16(),
-		u"https://exteradesktop.xyz"_q));
+		u"https://t.me/Tristegram"_q));
 	_telegram->setLinksTrusted();
 	// The canary version is too long for the "Version {version}" form.
 	_version->setMarkedText(

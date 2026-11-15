@@ -740,7 +740,7 @@ void PaintPreview(QPainter &p, QRect rect) {
 	case UsernameMode::Hidden:
 		break;
 	case UsernameMode::Shown:
-		drawText(y, u"@metawka"_q, true);
+		drawText(y, u"@Tristepin"_q, true);
 		y += line;
 		break;
 	}
@@ -799,7 +799,7 @@ void PaintPreview(QPainter &p, QRect rect) {
 				Avatar(),
 				QRect(left, channelTop, photo, photo));
 		},
-		u"@exDesktop"_q,
+		u"@Tristegram"_q,
 		tr::lng_extera_streamer_preview_channel(tr::now));
 }
 
