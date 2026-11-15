@@ -258,6 +258,10 @@ void PaintPatternBubble(QPainter &p, const SimpleBubble &args) {
 		fillPattern(x, y, corner, cache);
 	};
 	const auto paintTail = [&](QPoint bottomPosition) {
+		if (tail.isNull()) {
+			// Tristegram: the tail is not prepared yet, skip it this time.
+			return 0;
+		}
 		const auto position = bottomPosition - tailShift;
 		fillPattern(position.x(), position.y(), tail, pattern->tailCache);
 		return tail.width() / int(tail.devicePixelRatio());
@@ -524,6 +528,10 @@ void PaintPatternBubblePart(
 		const QRect &target,
 		const QImage &mask,
 		QImage &cache) {
+	if (mask.isNull()) {
+		// Tristegram: nothing to paint through, avoid the assertion crash.
+		return;
+	}
 	Expects(mask.bytesPerLine() == mask.width() * 4);
 	Expects(mask.format() == QImage::Format_ARGB32_Premultiplied);
 

@@ -1786,6 +1786,9 @@ SessionController::SessionController(
 			data.colors = { from, to };
 			_defaultChatTheme->setBubblesBackground(
 				Ui::PrepareBubblesBackground(data));
+			// The bubble tails are prepared here, without them painting
+			// a message with a tail hits an assertion and crashes.
+			_defaultChatTheme->finishCreateOnMain();
 		} else {
 			_defaultChatTheme->setBubblesBackground(QImage());
 		}
