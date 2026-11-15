@@ -347,6 +347,82 @@ index ebb7796..95c5329 100644
  
  boxButtonFont: font(boxFontSize semibold);
  defaultBoxButtonTextStyle: TextStyle(semiboldTextStyle) {
+diff --git a/ui/style/style_core_font.cpp b/ui/style/style_core_font.cpp
+index e179ece..54992b3 100644
+--- a/ui/style/style_core_font.cpp
++++ b/ui/style/style_core_font.cpp
+@@ -9,6 +9,7 @@
+ #include "base/algorithm.h"
+ #include "base/debug_log.h"
+ #include "base/base_file_utilities.h"
++#include "ui/style/style_core_scale.h"
+ #include "ui/text/text_shaper.h"
+ 
+ #include <atomic>
+@@ -58,6 +59,23 @@ void SetCustomFont(const QString &font) {
+ 	Custom = font;
+ }
+ 
++namespace {
++
++int SizeAdjust = 0;
++int RegularWeight = QFont::Normal;
++int BoldWeight = QFont::DemiBold;
++
++} // namespace
++
++void SetFontSizeAdjust(int pixels) {
++	SizeAdjust = pixels;
++}
++
++void SetFontWeights(int regular, int bold) {
++	RegularWeight = regular;
++	BoldWeight = bold;
++}
++
+ namespace internal {
+ 
+ struct ResolvedFont {
+@@ -320,7 +338,9 @@ struct Metrics {
+ 	} else {
+ 		font.setFamily("Open Sans"_q);
+ 	}
+-	font.setPixelSize(size);
++	font.setPixelSize(std::max(
++		size + (monospace ? 0 : ConvertScale(SizeAdjust)),
++		1));
+ 
+ 	const auto adjust = (overriden || system);
+ 	const auto metrics = ComputeMetrics(font, adjust);
+@@ -332,9 +352,9 @@ struct Metrics {
+ 			int(base::SafeRound(metrics.pixelSize * kSubSuperMultiplier)));
+ 	}
+ 	if (!monospace) {
+-		font.setWeight((flags & FontFlag::Bold)
+-			? QFont::DemiBold
+-			: QFont::Normal);
++		font.setWeight(QFont::Weight((flags & FontFlag::Bold)
++			? BoldWeight
++			: RegularWeight));
+ 		if (font.bold()) {
+ 			const auto style = QFontInfo(font).styleName();
+ 			if (!style.isEmpty() && !style.startsWith(
+diff --git a/ui/style/style_core_font.h b/ui/style/style_core_font.h
+index e194c4d..2bc4212 100644
+--- a/ui/style/style_core_font.h
++++ b/ui/style/style_core_font.h
+@@ -22,6 +22,11 @@ namespace style {
+ [[nodiscard]] const QString &SystemFontTag();
+ void SetCustomFont(const QString &font);
+ 
++// Tristegram: extra pixels for every font and the weights of the regular
++// and the bold fonts (QFont::Weight values), set before the styles start.
++void SetFontSizeAdjust(int pixels);
++void SetFontWeights(int regular, int bold);
++
+ enum class FontFlag : uchar {
+ 	Bold       = 0x01,
+ 	Italic     = 0x02,
 diff --git a/ui/toast/toast_widget.cpp b/ui/toast/toast_widget.cpp
 index 433b8f3..42763a6 100644
 --- a/ui/toast/toast_widget.cpp

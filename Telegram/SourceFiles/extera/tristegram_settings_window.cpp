@@ -9,6 +9,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "core/core_settings.h"
 #include "extera/extera_config.h"
 #include "extera/tristegram_custom.h"
+#include "extera/tristegram_cleaner.h"
 #include "extera/tristegram_custom_ui.h"
 #include "extera/tristegram_folders.h"
 #include "extera/tristegram_fonts.h"
@@ -955,6 +956,43 @@ void FillFonts(
 		.configKey = QString(),
 	});
 	AddNote(content, tr::lng_tgs_font_note(tr::now));
+
+	// Tristegram: size and weight of every font, like on iPhone.
+	AddLabel(content, tr::lng_tgs_font_size_title(tr::now));
+	const auto group = AddGroup(content);
+	AddConfigSlider(
+		group,
+		tr::lng_tgs_font_size(tr::now),
+		u"tristegram_font_size"_q,
+		Range(-2, 8, 1),
+		[](int value) {
+			return (value > 0)
+				? (u"+"_q + QString::number(value) + u" px"_q)
+				: (value < 0)
+				? (QString::number(value) + u" px"_q)
+				: tr::lng_tgs_font_size_default(tr::now);
+		},
+		false);
+	AddLabel(content, tr::lng_tgs_font_weight(tr::now));
+	AddSegments(
+		content,
+		{
+			tr::lng_tgs_font_weight_normal(tr::now),
+			tr::lng_tgs_font_weight_ios(tr::now),
+			tr::lng_tgs_font_weight_bold(tr::now),
+		},
+		std::clamp(Extera::Int(u"tristegram_font_weight"_q), 0, 2),
+		[](int index) {
+			Config().setInt(u"tristegram_font_weight"_q, index);
+		});
+	const auto restart = AddGroup(content);
+	AddActionRow(
+		restart,
+		tr::lng_tgs_restart_now(tr::now),
+		nullptr,
+		[] { Core::Restart(); },
+		true);
+	AddNote(content, tr::lng_tgs_font_size_note(tr::now));
 }
 
 void FillThemes(
@@ -1177,6 +1215,20 @@ void FillAvatars(not_null<Ui::VerticalLayout*> content) {
 void FillChats(
 		not_null<Ui::VerticalLayout*> content,
 		not_null<Window::SessionController*> controller) {
+	AddLabel(content, tr::lng_tgc_title(tr::now));
+	{
+		const auto group = AddGroup(content);
+		AddActionRow(
+			group,
+			tr::lng_tgc_open(tr::now),
+			nullptr,
+			[=] {
+				controller->hideLayer(anim::type::instant);
+				ShowChatCleaner(controller);
+			},
+			true);
+		AddNote(content, tr::lng_tgc_about(tr::now));
+	}
 	AddLabel(content, tr::lng_tgs_time(tr::now));
 	AddSegments(
 		content,
@@ -1732,7 +1784,10 @@ bool InterceptSettings(
 		const Settings::Type &type) {
 	if (BypassOnce || !Extera::Bool(u"tristegram_settings_window"_q)) {
 		return false;
-	} else if (type == Settings::MainId()) {
+	} else if (type == Settings::MainId()
+		|| type == Settings::ExteraId()) {
+		// The big exDesktop page with tiles is replaced by our window too,
+		// it stays reachable from the window sidebar.
 		ShowSettingsWindow(controller);
 		return true;
 	} else if (type == Settings::ChatId()) {

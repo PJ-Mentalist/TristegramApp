@@ -571,6 +571,16 @@ void Application::run() {
 
 	Tristegram::RegisterUserFonts();
 	style::SetCustomFont(settings().customFontFamily());
+	// Tristegram: font size and weight from the settings window.
+	style::SetFontSizeAdjust(std::clamp(
+		Extera::Int(u"tristegram_font_size"_q),
+		-2,
+		8));
+	switch (Extera::Int(u"tristegram_font_weight"_q)) {
+	case 1: style::SetFontWeights(QFont::Medium, QFont::Bold); break;
+	case 2: style::SetFontWeights(QFont::DemiBold, QFont::ExtraBold); break;
+	default: style::SetFontWeights(QFont::Normal, QFont::DemiBold); break;
+	}
 	style::internal::StartFonts();
 
 	Test::ApplyStartupOverrides();
