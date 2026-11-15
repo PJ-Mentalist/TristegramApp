@@ -158,21 +158,44 @@ jobs:
           key: win64d-libs-${{ env.CACHE_KEY }}
           restore-keys: win64d-libs-
 
+      - name: Stage keys before
+        id: keys-before
+        shell: bash
+        run: |
+          # prepare.py пишет ключ каждого готового этапа в cache_keys.
+          # Если ключи изменились — библиотеки пересобирались, кэш надо сохранить,
+          # даже если восстановился кэш с тем же CACHE_KEY (он мог быть неполным).
+          h() { cat "$1"/cache_keys/* 2>/dev/null | sha1sum | cut -c1-40; }
+          echo "libs=$(h "$(cygpath -u "$LibrariesPath")")" >> $GITHUB_OUTPUT
+          echo "tp=$(h "$(cygpath -u "$TBUILD")/ThirdParty")" >> $GITHUB_OUTPUT
+
       - name: Libraries
         id: libs
         timeout-minutes: 240
         run: |
           %REPO_DIR%\Telegram\build\prepare\win.bat silent
 
+      - name: Stage keys after
+        id: keys-after
+        if: always() && steps.libs.outcome != 'skipped'
+        shell: bash
+        run: |
+          h() { cat "$1"/cache_keys/* 2>/dev/null | sha1sum | cut -c1-40; }
+          L=$(h "$(cygpath -u "$LibrariesPath")"); T=$(h "$(cygpath -u "$TBUILD")/ThirdParty")
+          echo "libs=$([ "$L" != "${{ steps.keys-before.outputs.libs }}" ] && echo true || echo false)" >> $GITHUB_OUTPUT
+          echo "tp=$([ "$T" != "${{ steps.keys-before.outputs.tp }}" ] && echo true || echo false)" >> $GITHUB_OUTPUT
+          cat $GITHUB_OUTPUT
+
       - name: Save ThirdParty cache
-        if: always() && steps.libs.outcome != 'skipped' && !startsWith(steps.thirdparty-cache.outputs.cache-matched-key, format('win64d-third-party-{0}', env.CACHE_KEY))
+        if: always() && steps.libs.outcome != 'skipped' && (steps.keys-after.outputs.tp == 'true' || !startsWith(steps.thirdparty-cache.outputs.cache-matched-key, format('win64d-third-party-{0}', env.CACHE_KEY)))
         uses: actions/cache/save@v4
         with:
           path: ${{ env.TBUILD }}\ThirdParty
           key: win64d-third-party-${{ env.CACHE_KEY }}-${{ github.run_id }}
 
       - name: Save Libraries cache
-        if: always() && steps.libs.outcome != 'skipped' && !startsWith(steps.libs-cache.outputs.cache-matched-key, format('win64d-libs-{0}', env.CACHE_KEY))
+        id: libs-save
+        if: always() && steps.libs.outcome != 'skipped' && (steps.keys-after.outputs.libs == 'true' || !startsWith(steps.libs-cache.outputs.cache-matched-key, format('win64d-libs-{0}', env.CACHE_KEY)))
         uses: actions/cache/save@v4
         with:
           path: ${{ env.LibrariesPath }}
@@ -268,6 +291,18 @@ jobs:
             | while read -r id; do
                 gh cache delete "$id" --repo "$GITHUB_REPOSITORY" || true
               done
+          # Если в этом запуске сохранён новый кэш библиотек, старые больше не нужны.
+          if [ "${{ steps.libs-save.outcome }}" = "success" ]; then
+            for p in win64d-libs- win64d-third-party-; do
+              case $p in win64d-libs-) K="win64d-libs-$CACHE_KEY-${{ github.run_id }}";;
+                *) K="win64d-third-party-$CACHE_KEY-${{ github.run_id }}";; esac
+              if gh cache list --repo "$GITHUB_REPOSITORY" --key "$K" --json key --jq '.[].key' | grep -qx "$K"; then
+                gh cache list --repo "$GITHUB_REPOSITORY" --key $p --limit 100 \
+                  --json id,key --jq ".[] | select(.key != \"$K\") | .id" \
+                  | while read -r id; do gh cache delete "$id" --repo "$GITHUB_REPOSITORY" || true; done
+              fi
+            done
+          fi
           gh cache list --repo "$GITHUB_REPOSITORY" --limit 100 || true
 
       - name: Package
