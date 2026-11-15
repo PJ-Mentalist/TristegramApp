@@ -10154,6 +10154,14 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_tristegram_preview_tap" = "Tap the logo to play the animation";
 "lng_tristegram_glass_menus" = "Frosted glass menus";
 "lng_tristegram_ios_icons" = "Colored settings icons";
+"lng_tristegram_tab_look" = "Look";
+"lng_tristegram_tab_logo" = "Logo";
+"lng_tristegram_tab_messages" = "Messages";
+"lng_tristegram_tab_bar" = "Panel";
+"lng_tristegram_tab_more" = "More";
+"lng_tristegram_header_center" = "Chat header in the center";
+"lng_tristegram_header_avatar" = "Chat photo in the header";
+"lng_tristegram_compose_capsule" = "Rounded message field";
 "lng_tristegram_private_avatars" = "Avatars in private chats";
 "lng_tristegram_section" = "Tristegram";
 "lng_tristegram_top_bar" = "Tristegram bar above chats";

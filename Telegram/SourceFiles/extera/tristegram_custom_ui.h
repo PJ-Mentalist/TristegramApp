@@ -6,6 +6,8 @@ Telegram Desktop. Licensed under GNU GPL v3.
 
 #include "base/object_ptr.h"
 
+#include <vector>
+
 namespace Ui {
 class RpWidget;
 } // namespace Ui
@@ -30,5 +32,13 @@ struct TileGridDescriptor {
 [[nodiscard]] object_ptr<Ui::RpWidget> CreateTileGrid(
 	QWidget *parent,
 	TileGridDescriptor &&descriptor);
+
+// iOS-like segmented control: a capsule with a sliding gradient thumb
+// in the logo colors.
+[[nodiscard]] object_ptr<Ui::RpWidget> CreateSegmentedTabs(
+	QWidget *parent,
+	std::vector<QString> labels,
+	int active,
+	Fn<void(int)> changed);
 
 } // namespace Tristegram

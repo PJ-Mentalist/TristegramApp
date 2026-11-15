@@ -301,6 +301,14 @@ TopBarWidget::TopBarWidget(
 		updateControlsVisibility();
 		updateControlsGeometry();
 	}, lifetime());
+	Extera::Config::Instance().changes(
+	) | rpl::filter([](const QString &key) {
+		return key.startsWith(u"tristegram_header_"_q);
+	}) | rpl::on_next([=] {
+		updateInfoButtonVisibility();
+		updateControlsGeometry();
+		update();
+	}, lifetime());
 	_infoToggle->setAccessibleName(tr::lng_settings_section_info(tr::now));
 	_menuToggle->setAccessibleName(tr::lng_chat_menu(tr::now));
 	_back->setAccessibleName(tr::lng_go_back(tr::now));
@@ -750,6 +758,19 @@ void TopBarWidget::paintTopBar(Painter &p) {
 			.availableWidth = namewidth,
 			.elisionLines = 1,
 		});
+
+		// Tristegram: remember how wide the name block is, so the
+		// avatar, name and status can be centered as one group.
+		const auto textWidth = std::max(
+			(nameleft - _leftTaken) + _title.maxWidth() + badgeWidth,
+			_titlePeerText.maxWidth());
+		if (_tristegramTextWidth != textWidth) {
+			_tristegramTextWidth = textWidth;
+			crl::on_main(this, [=] {
+				updateControlsGeometry();
+				update();
+			});
+		}
 
 		p.setFont(st::dialogsTextFont);
 		if (!paintConnectingState(p, statusleft, statustop, width())
@@ -1364,6 +1385,31 @@ void TopBarWidget::updateControlsGeometry() {
 	_search->moveToRight(_rightTaken, otherButtonsTop);
 	if (!_search->isHidden()) {
 		_rightTaken += _search->width() + st::topBarCallSkip;
+	}
+
+	// Tristegram: avatar, name and status as one group in the middle,
+	// like the chat header on iPhone.
+	const auto centered = _info
+		&& !_info->isHidden()
+		&& !_searchField
+		&& !_chooseForReportReason
+		&& (_narrowRatio == 0.)
+		&& (_tristegramTextWidth > 0)
+		&& (_activeChat.section == Section::History)
+		&& Extera::Bool(u"tristegram_header_center"_q);
+	if (centered) {
+		const auto group = _info->width() + _tristegramTextWidth;
+		const auto minLeft = _leftTaken - _info->width();
+		const auto maxLeft = width()
+			- _rightTaken
+			- st::topBarNameRightPadding
+			- group;
+		const auto left = std::clamp(
+			(width() - group) / 2,
+			minLeft,
+			std::max(minLeft, maxLeft));
+		_info->moveToLeft(left, otherButtonsTop);
+		_leftTaken = left + _info->width();
 	}
 
 	updateMembersShowArea();

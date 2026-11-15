@@ -514,6 +514,10 @@ HistoryWidget::HistoryWidget(
 	) | rpl::filter(rpl::mappers::_1) | rpl::on_next([=] {
 		fieldFocused();
 	}, _field->lifetime());
+	_field->focusedChanges(
+	) | rpl::on_next([=] {
+		update(); // Tristegram: compose capsule highlights on focus.
+	}, _field->lifetime());
 	if (session().settings().shouldShowStashHint()) {
 		using StashHintManager = HistoryView::Controls::StashHintManager;
 		_stashHintManager = std::make_unique<StashHintManager>(
@@ -11705,6 +11709,33 @@ void HistoryWidget::drawField(Painter &p, const QRect &rect) {
 	p.setInactive(
 		controller()->isGifPausedAtLeastFor(Window::GifPauseReason::Any));
 	p.fillRect(myrtlrect(0, backy, width(), backh), st::historyReplyBg);
+	if (_field->isVisible()
+		&& !_fieldDisabled
+		&& Extera::Bool(u"tristegram_compose_capsule"_q)) {
+		// Tristegram: the message field sits in a rounded capsule,
+		// like the composer on iPhone.
+		const auto skip = st::historySendPadding / 2;
+		const auto left = _attachToggle->x() + skip;
+		const auto right = _send->x() - skip / 2;
+		const auto top = _field->y() - st::historySendPadding + skip;
+		const auto bottom = _field->y()
+			+ _field->height()
+			+ st::historySendPadding
+			- skip;
+		if (right > left && bottom > top) {
+			auto hq = PainterHighQualityEnabler(p);
+			const auto capsule = QRectF(left, top, right - left, bottom - top);
+			const auto radius = std::min(capsule.height() / 2., 20.);
+			auto ring = st::windowFg->c;
+			ring.setAlphaF(_field->hasFocus() ? 0.20 : 0.11);
+			p.setPen(QPen(ring, 1.));
+			p.setBrush(Qt::NoBrush);
+			p.drawRoundedRect(
+				capsule.marginsRemoved(QMarginsF(0.5, 0.5, 0.5, 0.5)),
+				radius,
+				radius);
+		}
+	}
 
 	const auto media = (!_previewDrawPreview && drawMsgText)
 		? drawMsgText->media()

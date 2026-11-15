@@ -16,6 +16,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 
 #include <QtGui/QPainterPath>
 
+#include <algorithm>
 #include <cmath>
 
 namespace Tristegram {
@@ -350,6 +351,169 @@ void TileGrid::paintEvent(QPaintEvent *e) {
 	}
 }
 
+
+class SegmentedTabs final : public Ui::RpWidget {
+public:
+	SegmentedTabs(
+		QWidget *parent,
+		std::vector<QString> labels,
+		int active,
+		Fn<void(int)> changed);
+
+protected:
+	int resizeGetHeight(int newWidth) override;
+	void paintEvent(QPaintEvent *e) override;
+	void mouseMoveEvent(QMouseEvent *e) override;
+	void mousePressEvent(QMouseEvent *e) override;
+	void leaveEventHook(QEvent *e) override;
+
+private:
+	[[nodiscard]] QRectF segmentRect(double index) const;
+	[[nodiscard]] int indexAt(QPoint point) const;
+
+	std::vector<QString> _labels;
+	Fn<void(int)> _changed;
+	int _active = 0;
+	int _over = -1;
+	double _from = 0.;
+	Ui::Animations::Simple _slide;
+
+};
+
+SegmentedTabs::SegmentedTabs(
+	QWidget *parent,
+	std::vector<QString> labels,
+	int active,
+	Fn<void(int)> changed)
+: RpWidget(parent)
+, _labels(std::move(labels))
+, _changed(std::move(changed))
+, _active(std::clamp(active, 0, std::max(int(_labels.size()) - 1, 0)))
+, _from(_active) {
+	setMouseTracking(true);
+	Extera::Config::Instance().changes(
+	) | rpl::filter([=](const QString &changed) {
+		return changed.startsWith(u"tristegram_logo"_q);
+	}) | rpl::on_next([=] {
+		update();
+	}, lifetime());
+}
+
+int SegmentedTabs::resizeGetHeight(int newWidth) {
+	return Px(44);
+}
+
+QRectF SegmentedTabs::segmentRect(double index) const {
+	const auto outer = QRectF(rect()).marginsRemoved(
+		QMarginsF(Px(12), Px(4), Px(12), Px(4)));
+	const auto count = std::max(int(_labels.size()), 1);
+	const auto inner = outer.marginsRemoved(QMarginsF(3, 3, 3, 3));
+	const auto width = inner.width() / count;
+	return QRectF(inner.x() + width * index, inner.y(), width, inner.height());
+}
+
+int SegmentedTabs::indexAt(QPoint point) const {
+	for (auto i = 0; i != int(_labels.size()); ++i) {
+		if (segmentRect(i).contains(point)) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+void SegmentedTabs::mouseMoveEvent(QMouseEvent *e) {
+	const auto index = indexAt(e->pos());
+	if (_over != index) {
+		_over = index;
+		setCursor((index >= 0 && index != _active)
+			? style::cur_pointer
+			: style::cur_default);
+		update();
+	}
+}
+
+void SegmentedTabs::leaveEventHook(QEvent *e) {
+	_over = -1;
+	update();
+}
+
+void SegmentedTabs::mousePressEvent(QMouseEvent *e) {
+	const auto index = indexAt(e->pos());
+	if (index < 0 || index == _active) {
+		return;
+	}
+	_from = _slide.value(_active);
+	_slide.stop();
+	_slide.start([=] { update(); }, _from, double(index), 320, anim::easeOutBack);
+	_active = index;
+	setCursor(style::cur_default);
+	update();
+	if (_changed) {
+		_changed(index);
+	}
+}
+
+void SegmentedTabs::paintEvent(QPaintEvent *e) {
+	auto p = QPainter(this);
+	auto hq = PainterHighQualityEnabler(p);
+	const auto outer = QRectF(rect()).marginsRemoved(
+		QMarginsF(Px(12), Px(4), Px(12), Px(4)));
+	const auto radius = outer.height() / 2.;
+
+	// Glass capsule.
+	p.setPen(QPen(Alpha(st::windowFg->c, 0.08), 1.));
+	p.setBrush(st::windowBgOver);
+	p.drawRoundedRect(outer, radius, radius);
+
+	// Sliding gradient thumb in the logo colors with a soft glow.
+	const auto style = CurrentLogoStyle();
+	const auto position = _slide.value(_active);
+	const auto thumb = segmentRect(position);
+	const auto thumbRadius = thumb.height() / 2.;
+	for (auto i = 3; i != 0; --i) {
+		auto glow = style.from;
+		glow.setAlphaF(0.07 * style.glowPower);
+		p.setPen(Qt::NoPen);
+		p.setBrush(glow);
+		const auto spread = i * 2.;
+		p.drawRoundedRect(
+			thumb.marginsAdded(QMarginsF(spread, spread, spread, spread)),
+			thumbRadius + spread,
+			thumbRadius + spread);
+	}
+	auto fill = QLinearGradient(thumb.topLeft(), thumb.bottomRight());
+	fill.setColorAt(0., style.from);
+	fill.setColorAt(1., style.to);
+	p.setBrush(fill);
+	p.drawRoundedRect(thumb, thumbRadius, thumbRadius);
+	auto sheen = QLinearGradient(thumb.topLeft(), thumb.bottomLeft());
+	sheen.setColorAt(0., QColor(255, 255, 255, 60));
+	sheen.setColorAt(0.5, QColor(255, 255, 255, 0));
+	p.setBrush(sheen);
+	p.drawRoundedRect(thumb, thumbRadius, thumbRadius);
+
+	// Labels: white over the thumb, muted elsewhere.
+	p.setFont(st::semiboldFont);
+	for (auto i = 0; i != int(_labels.size()); ++i) {
+		const auto segment = segmentRect(i);
+		const auto overlap = std::clamp(
+			1. - std::abs(position - i),
+			0.,
+			1.);
+		auto color = anim::color(
+			(i == _over) ? st::windowFg : st::windowSubTextFg,
+			QColor(255, 255, 255),
+			overlap);
+		p.setPen(color);
+		const auto text = segment.toRect().marginsRemoved(
+			QMargins(Px(4), 0, Px(4), 0));
+		p.drawText(
+			text,
+			Qt::AlignCenter,
+			st::semiboldFont->elided(_labels[i], text.width()));
+	}
+}
+
 } // namespace
 
 object_ptr<Ui::RpWidget> CreateLivePreview(QWidget *parent) {
@@ -360,6 +524,18 @@ object_ptr<Ui::RpWidget> CreateTileGrid(
 		QWidget *parent,
 		TileGridDescriptor &&descriptor) {
 	return object_ptr<TileGrid>(parent, std::move(descriptor));
+}
+
+object_ptr<Ui::RpWidget> CreateSegmentedTabs(
+		QWidget *parent,
+		std::vector<QString> labels,
+		int active,
+		Fn<void(int)> changed) {
+	return object_ptr<SegmentedTabs>(
+		parent,
+		std::move(labels),
+		active,
+		std::move(changed));
 }
 
 } // namespace Tristegram

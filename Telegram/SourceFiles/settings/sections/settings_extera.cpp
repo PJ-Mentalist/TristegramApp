@@ -3956,53 +3956,18 @@ void AddTristegramGrid(
 	});
 }
 
-void PartTristegramLook(SectionBuilder &builder) {
-	const auto controller = builder.controller();
+void PartTristegramPreview(SectionBuilder &builder) {
 	builder.addSkip();
-	builder.addSubsectionTitle(tr::lng_tristegram_custom_title());
 	builder.addControl({
 		.factory = [=](not_null<Ui::VerticalLayout*> container) {
 			return Tristegram::CreateLivePreview(container);
 		},
 	});
 	AddAbout(builder, tr::lng_tristegram_preview_tap());
+}
 
-	builder.addSkip();
-	builder.addSubsectionTitle(tr::lng_tristegram_logo_title());
-	AddTristegramGrid(builder, {
-		.count = Tristegram::LogoPresetsCount() + 1,
-		.name = [](int index) {
-			static const auto names = std::vector<const Phrase*>{
-				&tr::lng_tristegram_logo_p0,
-				&tr::lng_tristegram_logo_p1,
-				&tr::lng_tristegram_logo_p2,
-				&tr::lng_tristegram_logo_p3,
-				&tr::lng_tristegram_logo_p4,
-				&tr::lng_tristegram_logo_p5,
-				&tr::lng_tristegram_logo_p6,
-				&tr::lng_tristegram_logo_p7,
-				&tr::lng_tristegram_logo_p8,
-				&tr::lng_tristegram_logo_p9,
-				&tr::lng_tristegram_logo_p10,
-				&tr::lng_tristegram_logo_p11,
-				&tr::lng_tristegram_logo_custom,
-			};
-			return (index >= 0 && index < int(names.size()))
-				? (*names[index])(tr::now)
-				: QString();
-		},
-		.paintSwatch = [](QPainter &p, QRect rect, int index) {
-			auto style = Tristegram::LogoPreset(index);
-			style.glow = false;
-			Tristegram::PaintLogo(p, QRectF(rect), style);
-		},
-		.selected = [] { return Extera::Int(u"tristegram_logo"_q); },
-		.chosen = [](int index) {
-			Config().setInt(u"tristegram_logo"_q, index);
-		},
-		.configKey = u"tristegram_logo"_q,
-	});
-
+void PartTristegramTabLook(SectionBuilder &builder) {
+	const auto controller = builder.controller();
 	builder.addSkip();
 	builder.addSubsectionTitle(tr::lng_tristegram_themes_title());
 	AddTristegramGrid(builder, {
@@ -4074,89 +4039,6 @@ void PartTristegramLook(SectionBuilder &builder) {
 		},
 		.configKey = u"tristegram_bg_preset"_q,
 	});
-}
-
-void PartTristegram(SectionBuilder &builder) {
-	PartTristegramLook(builder);
-	builder.addSkip();
-	builder.addSubsectionTitle(tr::lng_tristegram_section());
-	builder.card([&] {
-		AddToggle(
-			builder,
-			u"tristegram_top_bar"_q,
-			tr::lng_tristegram_top_bar(),
-			{ u"tristegram"_q, u"clock"_q, u"ping"_q, u"account"_q });
-		AddToggle(
-			builder,
-			u"tristegram_private_avatars"_q,
-			tr::lng_tristegram_private_avatars(),
-			{ u"avatar"_q, u"userpic"_q });
-		AddToggle(
-			builder,
-			u"tristegram_eco"_q,
-			tr::lng_tristegram_eco(),
-			{ u"eco"_q, u"battery"_q, u"animation"_q });
-		AddToggle(
-			builder,
-			u"tristegram_bar_seconds"_q,
-			tr::lng_tristegram_bar_seconds(),
-			{ u"clock"_q, u"seconds"_q });
-		AddToggle(
-			builder,
-			u"tristegram_bar_ping"_q,
-			tr::lng_tristegram_bar_ping(),
-			{ u"ping"_q });
-		AddToggle(
-			builder,
-			u"tristegram_bar_clock"_q,
-			tr::lng_tristegram_bar_clock(),
-			{ u"clock"_q, u"plugins"_q });
-	});
-	AddAbout(builder, tr::lng_tristegram_section_about());
-	builder.addSkip();
-	builder.card([&] {
-		const auto controller = builder.controller();
-		builder.addButton({
-			.id = u"extera/tristegram_tabs"_q,
-			.title = tr::lng_tristegram_tabs_create(),
-			.st = &st::settingsButtonNoIcon,
-			.onClick = [=] {
-				if (controller) {
-					Tristegram::CreateTypeTabs(controller);
-				}
-			},
-			.keywords = { u"tabs"_q, u"folders"_q, u"bots"_q },
-		});
-	});
-	AddAbout(builder, tr::lng_tristegram_tabs_about());
-	builder.addSkip();
-	builder.addSubsectionTitle(tr::lng_tristegram_font_title());
-	builder.card([&] {
-		const auto controller = builder.controller();
-		builder.addButton({
-			.id = u"extera/tristegram_font_upload"_q,
-			.title = tr::lng_tristegram_font_upload(),
-			.st = &st::settingsButtonNoIcon,
-			.onClick = [=] {
-				if (controller) {
-					Tristegram::ChooseUserFont(controller);
-				}
-			},
-			.keywords = { u"font"_q, u"ttf"_q },
-		});
-		builder.addButton({
-			.id = u"extera/tristegram_font_pick"_q,
-			.title = tr::lng_tristegram_font_pick(),
-			.st = &st::settingsButtonNoIcon,
-			.onClick = [=] {
-				if (controller) {
-					controller->showSettings(Settings::ChatId());
-				}
-			},
-			.keywords = { u"font"_q },
-		});
-	});
-	AddAbout(builder, tr::lng_tristegram_font_about());
 	builder.addSkip();
 	builder.addSubsectionTitle(tr::lng_tristegram_look_title());
 	builder.card([&] {
@@ -4185,6 +4067,89 @@ void PartTristegram(SectionBuilder &builder) {
 		});
 	});
 	AddAbout(builder, tr::lng_tristegram_look_about());
+	builder.addSkip();
+	builder.card([&] {
+		AddToggle(
+			builder,
+			u"tristegram_ios_icons"_q,
+			tr::lng_tristegram_ios_icons(),
+			{ u"icons"_q, u"ios"_q });
+		AddToggle(
+			builder,
+			u"tristegram_glass_menus"_q,
+			tr::lng_tristegram_glass_menus(),
+			{ u"glass"_q, u"blur"_q, u"menu"_q });
+		AddToggle(
+			builder,
+			u"tristegram_header_avatar"_q,
+			tr::lng_tristegram_header_avatar(),
+			{ u"header"_q, u"avatar"_q });
+		AddToggle(
+			builder,
+			u"tristegram_header_center"_q,
+			tr::lng_tristegram_header_center(),
+			{ u"header"_q, u"center"_q });
+		AddToggle(
+			builder,
+			u"tristegram_compose_capsule"_q,
+			tr::lng_tristegram_compose_capsule(),
+			{ u"field"_q, u"input"_q, u"compose"_q });
+		AddToggle(
+			builder,
+			u"tristegram_online_accent"_q,
+			tr::lng_tristegram_online_accent(),
+			{ u"online"_q, u"avatar"_q });
+		AddChoice(
+			builder,
+			u"tristegram_avatar_ring"_q,
+			tr::lng_tristegram_avatar_ring,
+			{
+				&tr::lng_tristegram_ring_none,
+				&tr::lng_tristegram_ring_thin,
+				&tr::lng_tristegram_ring_accent,
+				&tr::lng_tristegram_ring_gradient,
+			},
+			{ u"avatar"_q, u"frame"_q });
+	});
+}
+
+void PartTristegramTabLogo(SectionBuilder &builder) {
+	builder.addSkip();
+	builder.addSubsectionTitle(tr::lng_tristegram_logo_title());
+	AddTristegramGrid(builder, {
+		.count = Tristegram::LogoPresetsCount() + 1,
+		.name = [](int index) {
+			static const auto names = std::vector<const Phrase*>{
+				&tr::lng_tristegram_logo_p0,
+				&tr::lng_tristegram_logo_p1,
+				&tr::lng_tristegram_logo_p2,
+				&tr::lng_tristegram_logo_p3,
+				&tr::lng_tristegram_logo_p4,
+				&tr::lng_tristegram_logo_p5,
+				&tr::lng_tristegram_logo_p6,
+				&tr::lng_tristegram_logo_p7,
+				&tr::lng_tristegram_logo_p8,
+				&tr::lng_tristegram_logo_p9,
+				&tr::lng_tristegram_logo_p10,
+				&tr::lng_tristegram_logo_p11,
+				&tr::lng_tristegram_logo_custom,
+			};
+			return (index >= 0 && index < int(names.size()))
+				? (*names[index])(tr::now)
+				: QString();
+		},
+		.paintSwatch = [](QPainter &p, QRect rect, int index) {
+			auto style = Tristegram::LogoPreset(index);
+			style.glow = false;
+			Tristegram::PaintLogo(p, QRectF(rect), style);
+		},
+		.selected = [] { return Extera::Int(u"tristegram_logo"_q); },
+		.chosen = [](int index) {
+			Config().setInt(u"tristegram_logo"_q, index);
+		},
+		.configKey = u"tristegram_logo"_q,
+	});
+
 	builder.addSkip();
 	builder.card([&] {
 		AddColorButton(builder, u"tristegram_logo_c1"_q, tr::lng_tristegram_logo_c1);
@@ -4238,6 +4203,10 @@ void PartTristegram(SectionBuilder &builder) {
 			{ u"logo"_q });
 	});
 	builder.addSkip();
+}
+
+void PartTristegramTabMessages(SectionBuilder &builder) {
+	builder.addSkip();
 	builder.addSubsectionTitle(tr::lng_tristegram_bubbles_title());
 	builder.card([&] {
 		AddToggle(
@@ -4265,34 +4234,89 @@ void PartTristegram(SectionBuilder &builder) {
 	});
 	AddAbout(builder, tr::lng_tristegram_bubbles_about());
 	builder.addSkip();
+	builder.addSubsectionTitle(tr::lng_tristegram_font_title());
+	builder.card([&] {
+		const auto controller = builder.controller();
+		builder.addButton({
+			.id = u"extera/tristegram_font_upload"_q,
+			.title = tr::lng_tristegram_font_upload(),
+			.st = &st::settingsButtonNoIcon,
+			.onClick = [=] {
+				if (controller) {
+					Tristegram::ChooseUserFont(controller);
+				}
+			},
+			.keywords = { u"font"_q, u"ttf"_q },
+		});
+		builder.addButton({
+			.id = u"extera/tristegram_font_pick"_q,
+			.title = tr::lng_tristegram_font_pick(),
+			.st = &st::settingsButtonNoIcon,
+			.onClick = [=] {
+				if (controller) {
+					controller->showSettings(Settings::ChatId());
+				}
+			},
+			.keywords = { u"font"_q },
+		});
+	});
+	AddAbout(builder, tr::lng_tristegram_font_about());
+	builder.addSkip();
+}
+
+void PartTristegramTabBar(SectionBuilder &builder) {
+	builder.addSkip();
+	builder.addSubsectionTitle(tr::lng_tristegram_section());
 	builder.card([&] {
 		AddToggle(
 			builder,
-			u"tristegram_ios_icons"_q,
-			tr::lng_tristegram_ios_icons(),
-			{ u"icons"_q, u"ios"_q });
+			u"tristegram_top_bar"_q,
+			tr::lng_tristegram_top_bar(),
+			{ u"tristegram"_q, u"clock"_q, u"ping"_q, u"account"_q });
 		AddToggle(
 			builder,
-			u"tristegram_glass_menus"_q,
-			tr::lng_tristegram_glass_menus(),
-			{ u"glass"_q, u"blur"_q, u"menu"_q });
+			u"tristegram_private_avatars"_q,
+			tr::lng_tristegram_private_avatars(),
+			{ u"avatar"_q, u"userpic"_q });
 		AddToggle(
 			builder,
-			u"tristegram_online_accent"_q,
-			tr::lng_tristegram_online_accent(),
-			{ u"online"_q, u"avatar"_q });
-		AddChoice(
+			u"tristegram_eco"_q,
+			tr::lng_tristegram_eco(),
+			{ u"eco"_q, u"battery"_q, u"animation"_q });
+		AddToggle(
 			builder,
-			u"tristegram_avatar_ring"_q,
-			tr::lng_tristegram_avatar_ring,
-			{
-				&tr::lng_tristegram_ring_none,
-				&tr::lng_tristegram_ring_thin,
-				&tr::lng_tristegram_ring_accent,
-				&tr::lng_tristegram_ring_gradient,
-			},
-			{ u"avatar"_q, u"frame"_q });
+			u"tristegram_bar_seconds"_q,
+			tr::lng_tristegram_bar_seconds(),
+			{ u"clock"_q, u"seconds"_q });
+		AddToggle(
+			builder,
+			u"tristegram_bar_ping"_q,
+			tr::lng_tristegram_bar_ping(),
+			{ u"ping"_q });
+		AddToggle(
+			builder,
+			u"tristegram_bar_clock"_q,
+			tr::lng_tristegram_bar_clock(),
+			{ u"clock"_q, u"plugins"_q });
 	});
+	AddAbout(builder, tr::lng_tristegram_section_about());
+	builder.addSkip();
+	builder.card([&] {
+		const auto controller = builder.controller();
+		builder.addButton({
+			.id = u"extera/tristegram_tabs"_q,
+			.title = tr::lng_tristegram_tabs_create(),
+			.st = &st::settingsButtonNoIcon,
+			.onClick = [=] {
+				if (controller) {
+					Tristegram::CreateTypeTabs(controller);
+				}
+			},
+			.keywords = { u"tabs"_q, u"folders"_q, u"bots"_q },
+		});
+	});
+	AddAbout(builder, tr::lng_tristegram_tabs_about());
+	builder.addSkip();
 }
 
 void PartPremium(SectionBuilder &builder);
@@ -4302,23 +4326,65 @@ void BuildAppearance(SectionBuilder &builder) {
 		ExteraAppearanceId(),
 		ExteraNavigationId(),
 	}, [&] {
-		PartTristegram(builder);
-		PartAppearance0(builder);
-		PartAppearance1(builder);
-		PartAppearance2(builder);
-		PartAppearance3(builder);
-		PartAppearance4(builder);
-		PartGeneral3(builder);
-		PartChats0(builder);
-		PartPremium(builder);
-		builder.addSkip();
-		builder.card([&] {
-			builder.addSectionButton({
-				.title = tr::lng_extera_nav_title(),
-				.targetSection = ExteraNavigationId(),
-				.icon = { &st::menuIconReorder },
+		// Tristegram: one live preview on top and the settings split into
+		// segmented tabs, like in the prototype.
+		PartTristegramPreview(builder);
+		const auto container = builder.container();
+		const auto tab = container
+			? container->lifetime().make_state<rpl::variable<int>>(
+				std::clamp(
+					Extera::Int(u"tristegram_settings_tab"_q),
+					0,
+					4))
+			: nullptr;
+		if (tab) {
+			builder.addControl({
+				.factory = [=](not_null<Ui::VerticalLayout*> parent) {
+					return Tristegram::CreateSegmentedTabs(
+						parent,
+						{
+							tr::lng_tristegram_tab_look(tr::now),
+							tr::lng_tristegram_tab_logo(tr::now),
+							tr::lng_tristegram_tab_messages(tr::now),
+							tr::lng_tristegram_tab_bar(tr::now),
+							tr::lng_tristegram_tab_more(tr::now),
+						},
+						tab->current(),
+						[=](int index) {
+							*tab = index;
+							Config().setInt(u"tristegram_settings_tab"_q, index);
+						});
+				},
 			});
-		});
+		}
+		const auto shown = [=](int index) -> rpl::producer<bool> {
+			if (!tab) {
+				return nullptr;
+			}
+			return tab->value() | rpl::map(rpl::mappers::_1 == index);
+		};
+		builder.scope([&] { PartTristegramTabLook(builder); }, shown(0));
+		builder.scope([&] { PartTristegramTabLogo(builder); }, shown(1));
+		builder.scope([&] { PartTristegramTabMessages(builder); }, shown(2));
+		builder.scope([&] { PartTristegramTabBar(builder); }, shown(3));
+		builder.scope([&] {
+			PartAppearance0(builder);
+			PartAppearance1(builder);
+			PartAppearance2(builder);
+			PartAppearance3(builder);
+			PartAppearance4(builder);
+			PartGeneral3(builder);
+			PartChats0(builder);
+			PartPremium(builder);
+			builder.addSkip();
+			builder.card([&] {
+				builder.addSectionButton({
+					.title = tr::lng_extera_nav_title(),
+					.targetSection = ExteraNavigationId(),
+					.icon = { &st::menuIconReorder },
+				});
+			});
+		}, shown(4));
 	});
 }
 
