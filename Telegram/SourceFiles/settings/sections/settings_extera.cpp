@@ -4275,6 +4275,11 @@ void PartTristegram(SectionBuilder &builder) {
 	builder.card([&] {
 		AddToggle(
 			builder,
+			u"tristegram_ios_icons"_q,
+			tr::lng_tristegram_ios_icons(),
+			{ u"icons"_q, u"ios"_q });
+		AddToggle(
+			builder,
 			u"tristegram_glass_menus"_q,
 			tr::lng_tristegram_glass_menus(),
 			{ u"glass"_q, u"blur"_q, u"menu"_q });

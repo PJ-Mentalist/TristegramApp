@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/settings_common.h"
+#include "extera/extera_config.h"
 
 #include "base/timer.h"
 #include "lottie/lottie_icon.h"
@@ -371,6 +372,60 @@ void AbstractSection::setNavigationAnchor(not_null<QWidget*> widget) {
 	_keyNavigation->anchorTo(widget);
 }
 
+namespace {
+
+// Tristegram: iOS-like colored squares behind settings icons.
+[[nodiscard]] std::pair<QColor, QColor> TristegramIconColors(
+		const style::icon *icon) {
+	struct Entry {
+		const style::icon *icon = nullptr;
+		QColor from;
+		QColor to;
+	};
+	const auto rgb = [](uint32 value) {
+		return QColor((value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF);
+	};
+	static const auto list = std::vector<Entry>{
+		{ &st::menuIconProfile, rgb(0x2F8CF0), rgb(0x3A5CF0) },
+		{ &st::menuIconNotifications, rgb(0xFF453A), rgb(0xFF375F) },
+		{ &st::menuIconLock, rgb(0x0A84FF), rgb(0x5E5CE6) },
+		{ &st::menuIconChatBubble, rgb(0xFF9F0A), rgb(0xF07A0C) },
+		{ &st::menuIconShowInFolder, rgb(0x32ADE6), rgb(0x0A84FF) },
+		{ &st::menuIconManage, rgb(0x98989D), rgb(0x636366) },
+		{ &st::menuIconUnmute, rgb(0xBF5AF2), rgb(0x8B5CF6) },
+		{ &st::menuIconPowerUsage, rgb(0x30D158), rgb(0x22A45D) },
+		{ &st::menuIconTranslate, rgb(0x64D2FF), rgb(0x0A84FF) },
+		{ &st::menuIconFaq, rgb(0xFFD60A), rgb(0xFF9F0A) },
+		{ &st::menuIconDiscussion, rgb(0x30D158), rgb(0x0A8F5A) },
+		{ &st::menuIconEmojiObjects, rgb(0xFFB340), rgb(0xFF9F0A) },
+		{ &st::menuIconBotCommands, rgb(0x5E5CE6), rgb(0x8B5CF6) },
+		{ &st::menuIconTon, rgb(0x0A84FF), rgb(0x5AC8FA) },
+		{ &st::menuIconShop, rgb(0xFF375F), rgb(0xFF9F0A) },
+		{ &st::menuIconGiftPremium, rgb(0xBF5AF2), rgb(0xFF375F) },
+		{ &st::menuIconSettings, rgb(0x98989D), rgb(0x636366) },
+	};
+	for (const auto &entry : list) {
+		if (entry.icon == icon) {
+			return { entry.from, entry.to };
+		}
+	}
+	static const auto fallback = std::vector<std::pair<QColor, QColor>>{
+		{ rgb(0xFF9F0A), rgb(0xF07A0C) },
+		{ rgb(0x0A84FF), rgb(0x5E5CE6) },
+		{ rgb(0x30D158), rgb(0x22A45D) },
+		{ rgb(0xBF5AF2), rgb(0x8B5CF6) },
+		{ rgb(0xFF375F), rgb(0xFF453A) },
+		{ rgb(0x64D2FF), rgb(0x0A84FF) },
+		{ rgb(0xFFD60A), rgb(0xFF9F0A) },
+		{ rgb(0x5E5CE6), rgb(0xBF5AF2) },
+	};
+	const auto index = (reinterpret_cast<quintptr>(icon) / 8)
+		% fallback.size();
+	return fallback[index];
+}
+
+} // namespace
+
 Icon::Icon(IconDescriptor descriptor) : _icon(descriptor.icon) {
 	const auto background = [&]() -> const style::color* {
 		if (descriptor.type == IconType::Simple) {
@@ -388,6 +443,19 @@ Icon::Icon(IconDescriptor descriptor) : _icon(descriptor.icon) {
 			? st::settingsIconRadius
 			: (std::min(_icon->width(), _icon->height()) / 2);
 		_backgroundBrush.emplace(radius, std::move(*brush));
+	} else if (descriptor.type == IconType::Rounded
+		&& Extera::Bool(u"tristegram_ios_icons"_q)) {
+		const auto [from, to] = TristegramIconColors(descriptor.icon);
+		const auto size = _icon->size();
+		auto gradient = QLinearGradient(
+			QPointF(0, 0),
+			QPointF(size.width(), size.height()));
+		gradient.setColorAt(0., from);
+		gradient.setColorAt(1., to);
+		_backgroundBrush.emplace(
+			st::settingsIconRadius + style::ConvertScale(1),
+			QBrush(gradient));
+		_whiteGlyph = true;
 	}
 }
 
@@ -402,10 +470,28 @@ void Icon::paint(QPainter &p, int x, int y) const {
 		PainterHighQualityEnabler hq(p);
 		p.setPen(Qt::NoPen);
 		p.setBrush(_backgroundBrush->second);
-		p.drawRoundedRect(
-			QRect(QPoint(x, y), _icon->size()),
-			_backgroundBrush->first,
-			_backgroundBrush->first);
+		if (_whiteGlyph) {
+			p.save();
+			p.translate(x, y);
+			p.drawRoundedRect(
+				QRect(QPoint(), _icon->size()),
+				_backgroundBrush->first,
+				_backgroundBrush->first);
+			p.restore();
+		} else {
+			p.drawRoundedRect(
+				QRect(QPoint(x, y), _icon->size()),
+				_backgroundBrush->first,
+				_backgroundBrush->first);
+		}
+	}
+	if (_whiteGlyph) {
+		_icon->paint(
+			p,
+			QPoint(x, y),
+			2 * x + _icon->width(),
+			QColor(255, 255, 255));
+		return;
 	}
 	_icon->paint(p, { x, y }, 2 * x + _icon->width());
 }
