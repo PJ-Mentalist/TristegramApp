@@ -6,6 +6,7 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "window/section_widget.h"
+#include "extera/tristegram_live_wallpaper.h"
 #include "extera/extera_config.h"
 
 #include "mainwidget.h"
@@ -380,6 +381,7 @@ void SectionWidget::PaintBackground(
 		int fromy,
 		QRect clip,
 		bool paused) {
+	Tristegram::RegisterLiveWallpaperWidget(widget);
 	auto p = QPainter(widget);
 	if (fromy) {
 		p.translate(0, fromy);
@@ -396,6 +398,10 @@ void SectionWidget::PaintBackground(
 		QRect clip,
 		bool paused) {
 	const auto &background = theme->background();
+	// Tristegram: an animated scene over the background, after any return.
+	const auto live = gsl::finally([&] {
+		Tristegram::PaintLiveWallpaper(p, background.colors, fill, clip);
+	});
 	if (background.colorForFill) {
 		p.fillRect(clip, *background.colorForFill);
 		return;

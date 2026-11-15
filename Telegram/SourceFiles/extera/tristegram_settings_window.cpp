@@ -13,6 +13,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "extera/tristegram_custom_ui.h"
 #include "extera/tristegram_folders.h"
 #include "extera/tristegram_fonts.h"
+#include "extera/tristegram_live_wallpaper.h"
 #include "extera/tristegram_logo.h"
 #include "lang/lang_keys.h"
 #include "mainwindow.h"
@@ -1065,13 +1066,14 @@ void FillBackground(
 	AddBackgroundPreview(content);
 	AddLabel(content, tr::lng_tgs_bg_type(tr::now));
 	const auto mode = content->lifetime().make_state<rpl::variable<int>>(
-		std::clamp(Extera::Int(u"tristegram_bg_mode"_q), 0, 2));
+		std::clamp(Extera::Int(u"tristegram_bg_mode"_q), 0, 3));
 	AddSegments(
 		content,
 		{
 			tr::lng_tgs_bg_ready(tr::now),
 			tr::lng_tgs_bg_gradient(tr::now),
 			tr::lng_tgs_bg_photo(tr::now),
+			tr::lng_tgl_tab(tr::now),
 		},
 		mode->current(),
 		[=](int index) {
@@ -1151,6 +1153,70 @@ void FillBackground(
 			[=] { controller->show(Box<BackgroundBox>(controller)); },
 			true);
 		AddNote(inner, tr::lng_tgs_bg_photo_note(tr::now));
+	}
+	{
+		// Tristegram: animated wallpapers.
+		const auto inner = addWrap(3);
+		const auto names = std::vector<QString>{
+			tr::lng_tgl_none(tr::now),
+			tr::lng_tgl_doves(tr::now),
+			tr::lng_tgl_stars(tr::now),
+			tr::lng_tgl_bubbles(tr::now),
+			tr::lng_tgl_code(tr::now),
+			tr::lng_tgl_aurora(tr::now),
+			tr::lng_tgl_own(tr::now),
+		};
+		const auto glyphs = std::vector<QString>{
+			u"✕"_q,
+			u"🕊"_q,
+			u"✨"_q,
+			u"🫧"_q,
+			u"</>"_q,
+			u"🌌"_q,
+			u"▶"_q,
+		};
+		AddTiles(inner, {
+			.count = int(names.size()),
+			.name = [=](int index) { return names[index]; },
+			.paintSwatch = [=](QPainter &p, QRect rect, int index) {
+				const auto colors = CurrentLogoStyle();
+				auto fill = QLinearGradient(rect.topLeft(), rect.bottomRight());
+				fill.setColorAt(0., index ? colors.from : Alpha(st::windowFg->c, 0.12));
+				fill.setColorAt(1., index ? colors.to : Alpha(st::windowFg->c, 0.06));
+				p.setPen(Qt::NoPen);
+				p.setBrush(fill);
+				p.drawEllipse(rect);
+				auto font = QFont(st::semiboldFont->f);
+				font.setPixelSize(rect.height() * 2 / 5);
+				p.setFont(font);
+				p.setPen(index ? QColor(255, 255, 255) : st::windowSubTextFg->c);
+				p.drawText(rect, Qt::AlignCenter, glyphs[index]);
+			},
+			.selected = [] {
+				return std::clamp(Extera::Int(u"tristegram_live_kind"_q), 0, 6);
+			},
+			.chosen = [=](int index) {
+				if (index == int(LiveWallpaperKind::Video)) {
+					ChooseLiveWallpaperFile(controller);
+				} else {
+					Config().setInt(u"tristegram_live_kind"_q, index);
+					controller->widget()->update();
+				}
+			},
+			.configKey = u"tristegram_live_kind"_q,
+		});
+		AddLabel(inner, tr::lng_tgl_fps(tr::now));
+		const auto values = std::vector<int>{ 15, 24, 30, 60 };
+		const auto current = Extera::Int(u"tristegram_live_fps"_q);
+		const auto i = std::find(values.begin(), values.end(), current);
+		AddSegments(
+			inner,
+			{ u"15"_q, u"24"_q, u"30"_q, u"60"_q },
+			(i == values.end()) ? 1 : int(i - values.begin()),
+			[=](int index) {
+				Config().setInt(u"tristegram_live_fps"_q, values[index]);
+			});
+		AddNote(inner, tr::lng_tgl_note(tr::now));
 	}
 }
 
