@@ -44,6 +44,8 @@ namespace Extera {
 namespace {
 
 constexpr auto kMaxQuickActions = 5;
+constexpr auto kQuickSide = 6;
+constexpr auto kQuickTile = 54;
 
 
 class DetailAction final : public Ui::Menu::ItemBase {
@@ -202,7 +204,6 @@ protected:
 private:
 	void layout();
 	void updateHovered();
-	[[nodiscard]] int dividerHeight() const;
 
 	const not_null<QAction*> _dummyAction;
 	const style::Menu &_st;
@@ -293,20 +294,51 @@ void QuickRow::addButton(
 	button->setPointerCursor(true);
 	button->setAttribute(Qt::WA_TransparentForMouseEvents);
 	button->paintRequest() | rpl::on_next([=] {
+		// Tristegram: a tile with the icon and a small caption under it.
 		auto p = QPainter(button);
-		if (_hovered == index || _pressed == index) {
-			auto hq = PainterHighQualityEnabler(p);
-			p.setPen(Qt::NoPen);
-			p.setBrush(_st.itemBgOver);
-			const auto radius = st::roundRadiusLarge;
-			p.drawRoundedRect(button->rect(), radius, radius);
+		auto hq = PainterHighQualityEnabler(p);
+		const auto active = (_hovered == index || _pressed == index);
+		auto bg = _st.itemBgOver->c;
+		bg.setAlphaF(bg.alphaF()
+			* ((_pressed == index) ? 1. : active ? 0.85 : 0.5));
+		p.setPen(Qt::NoPen);
+		p.setBrush(bg);
+		const auto radius = style::ConvertScale(12);
+		p.drawRoundedRect(QRectF(button->rect()), radius, radius);
+
+		const auto font = style::font(
+			style::ConvertScale(11),
+			style::FontFlags(),
+			0);
+		const auto showLabel = (button->width() >= style::ConvertScale(56));
+		const auto labelHeight = showLabel ? font->height : 0;
+		const auto gap = showLabel ? style::ConvertScale(1) : 0;
+		const auto total = icon->height() + gap + labelHeight;
+		const auto top = (button->height() - total) / 2;
+		icon->paint(
+			p,
+			(button->width() - icon->width()) / 2,
+			top,
+			button->width());
+		if (showLabel) {
+			p.setFont(font->f);
+			p.setPen(_st.itemFg);
+			p.drawText(
+				QRect(
+					0,
+					top + icon->height() + gap,
+					button->width(),
+					labelHeight),
+				Qt::AlignHCenter | Qt::AlignTop,
+				font->elided(label, button->width() - style::ConvertScale(6)));
 		}
-		icon->paintInCenter(p, button->rect());
 	}, button->lifetime());
 	_buttons.push_back(button);
 	_actions.push_back(action);
-	setMinWidth(int(_buttons.size()) * st::exteraQuickButtonWidth
-		+ 2 * st::exteraQuickPadding);
+	setMinWidth(std::min(
+		int(_buttons.size()) * style::ConvertScale(72)
+			+ 2 * style::ConvertScale(kQuickSide),
+		style::ConvertScale(300)));
 	layout();
 }
 
@@ -314,16 +346,17 @@ void QuickRow::layout() {
 	if (_buttons.empty()) {
 		return;
 	}
-	const auto padding = st::exteraQuickPadding;
-	const auto available = width() - 2 * padding;
+	const auto side = style::ConvertScale(kQuickSide);
+	const auto gap = style::ConvertScale(4);
 	const auto count = int(_buttons.size());
+	const auto available = width() - 2 * side - gap * (count - 1);
 	const auto each = available / count;
 	for (auto i = 0; i != count; ++i) {
 		_buttons[i]->setGeometry(
-			padding + i * each,
-			dividerHeight() + padding,
+			side + i * (each + gap),
+			style::ConvertScale(2),
 			each,
-			st::exteraQuickHeight - 2 * padding);
+			style::ConvertScale(kQuickTile));
 	}
 }
 
@@ -335,24 +368,17 @@ not_null<QAction*> QuickRow::action() const {
 	return _dummyAction;
 }
 
-int QuickRow::dividerHeight() const {
-	const auto &divider = st::expandedMenuSeparator;
-	return divider.padding.top() + divider.width + divider.padding.bottom();
-}
-
 int QuickRow::contentHeight() const {
-	return dividerHeight() + st::exteraQuickHeight;
+	return style::ConvertScale(kQuickTile + 8);
 }
 
 void QuickRow::paintEvent(QPaintEvent *e) {
-	auto p = QPainter(this);
-	const auto &divider = st::expandedMenuSeparator;
-	p.fillRect(
-		divider.padding.left(),
-		divider.padding.top(),
-		width() - divider.padding.left() - divider.padding.right(),
-		divider.width,
-		divider.fg);
+	// Tristegram: the row sits on top of the menu, without a divider.
+	const auto glass = parentWidget()
+		&& parentWidget()->property("tristegramGlass").toBool();
+	if (!glass) {
+		QPainter(this).fillRect(e->rect(), _st.itemBg);
+	}
 }
 
 [[nodiscard]] base::flat_map<FullMsgId, qint64> &ReceivedTimes() {
@@ -704,17 +730,8 @@ void ApplyQuickActions(not_null<Ui::PopupMenu*> menu) {
 	while (!menu->empty() && menu->actions().back()->isSeparator()) {
 		menu->removeAction(int(menu->actions().size()) - 1);
 	}
-	auto lastSeparator = -1;
-	for (auto i = 0; i != int(menu->actions().size()); ++i) {
-		if (menu->actions()[i]->isSeparator()) {
-			lastSeparator = i;
-		}
-	}
-	if (lastSeparator > 0) {
-		menu->insertAction(lastSeparator, std::move(row));
-	} else {
-		menu->addAction(std::move(row));
-	}
+	// Tristegram: quick tiles go on top, like in the prototype.
+	menu->insertAction(0, std::move(row));
 }
 
 void RememberReceivedTime(not_null<HistoryItem*> item) {

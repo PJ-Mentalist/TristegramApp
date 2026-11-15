@@ -684,7 +684,7 @@ peerQrGiftsBrowse: RoundButton(defaultActiveButton) {
 foldersMenu: PopupMenu(popupMenuWithIcons) {
 	maxHeight: 320px;
 	menu: Menu(menuWithIcons) {
-		itemPadding: margins(54px, 8px, 44px, 8px);
+		itemPadding: margins(54px, 10px, 44px, 10px);
 	}
 }
 

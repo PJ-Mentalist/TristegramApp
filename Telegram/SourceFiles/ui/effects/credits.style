@@ -183,7 +183,7 @@ giftBoxResaleMiniDate: IconEmoji {
 }
 giftBoxResaleFilter: PopupMenu(popupMenuWithIcons) {
 	menu: Menu(menuWithIcons) {
-		itemPadding: margins(54px, 8px, 48px, 8px);
+		itemPadding: margins(54px, 10px, 48px, 10px);
 		itemRightSkip: 12px;
 	}
 	maxHeight: 320px;

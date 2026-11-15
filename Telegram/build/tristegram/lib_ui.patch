@@ -485,7 +485,7 @@ index 56723aa..49c8941 100644
  
  	positionValue(
 diff --git a/ui/widgets/menu/menu_action.cpp b/ui/widgets/menu/menu_action.cpp
-index 4c16b67..574ec59 100644
+index 4c16b67..a5878ec 100644
 --- a/ui/widgets/menu/menu_action.cpp
 +++ b/ui/widgets/menu/menu_action.cpp
 @@ -10,6 +10,7 @@
@@ -510,7 +510,7 @@ index 4c16b67..574ec59 100644
 +	}
 +	if (selected) {
 +		const auto inset = style::ConvertScale(6);
-+		const auto radius = style::ConvertScale(10);
++		const auto radius = style::ConvertScale(11);
 +		auto hq = PainterHighQualityEnabler(p);
 +		p.setPen(Qt::NoPen);
 +		p.setBrush(_st.itemBgOver);
@@ -530,7 +530,7 @@ index 4c16b67..574ec59 100644
  	paintBackground(p, selected);
  	if (enabled) {
 +		const auto inset = style::ConvertScale(6);
-+		const auto radius = style::ConvertScale(10);
++		const auto radius = style::ConvertScale(11);
 +		auto clip = QPainterPath();
 +		clip.addRoundedRect(
 +			QRectF(inset, 1, width() - inset * 2, _height - 2),
@@ -578,7 +578,7 @@ index 981d609..ab5640a 100644
  			_padding.left(),
  			_padding.top(),
 diff --git a/ui/widgets/popup_menu.cpp b/ui/widgets/popup_menu.cpp
-index 8a2ffc7..78b1c5b 100644
+index 8a2ffc7..a9071dd 100644
 --- a/ui/widgets/popup_menu.cpp
 +++ b/ui/widgets/popup_menu.cpp
 @@ -6,6 +6,8 @@
@@ -590,7 +590,37 @@ index 8a2ffc7..78b1c5b 100644
  #include "base/platform/base_platform_info.h"
  #include "base/invoke_queued.h"
  #include "base/weak_qptr.h"
-@@ -172,6 +174,91 @@ void PopupMenu::init() {
+@@ -104,10 +106,19 @@ struct PopupMenu::SubmenuAim {
+ 	bool aiming = false;
+ };
+ 
++namespace {
++
++// Tristegram: every popup menu gets the same soft rounded shape.
++[[nodiscard]] int TristegramRadius(int radius) {
++	return std::max(radius, style::ConvertScale(16));
++}
++
++} // namespace
++
+ PopupMenu::PopupMenu(QWidget *parent, const style::PopupMenu &st)
+ : RpWidget(parent)
+ , _st(st)
+-, _roundRect(_st.radius, _st.menu.itemBg)
++, _roundRect(TristegramRadius(_st.radius), _st.menu.itemBg)
+ , _boxShadow(_st.shadow)
+ , _scroll(this, st::defaultMultiSelect.scroll)
+ , _menu(_scroll->setOwnedWidget(
+@@ -121,7 +132,7 @@ PopupMenu::PopupMenu(QWidget *parent, const style::PopupMenu &st)
+ PopupMenu::PopupMenu(QWidget *parent, QMenu *menu, const style::PopupMenu &st)
+ : RpWidget(parent)
+ , _st(st)
+-, _roundRect(_st.radius, _st.menu.itemBg)
++, _roundRect(TristegramRadius(_st.radius), _st.menu.itemBg)
+ , _boxShadow(_st.shadow)
+ , _scroll(this, st::defaultMultiSelect.scroll)
+ , _menu(_scroll->setOwnedWidget(
+@@ -172,6 +183,91 @@ void PopupMenu::init() {
  		setAttribute(Qt::WA_TranslucentBackground, false);
  		setAttribute(Qt::WA_OpaquePaintEvent, true);
  	}
@@ -682,14 +712,14 @@ index 8a2ffc7..78b1c5b 100644
  }
  
  not_null<PopupMenu*> PopupMenu::ensureSubmenu(
-@@ -265,6 +352,28 @@ void PopupMenu::updateRoundingOverlay() {
+@@ -265,9 +361,31 @@ void PopupMenu::updateRoundingOverlay() {
  		auto hq = PainterHighQualityEnabler(p);
  		p.setCompositionMode(QPainter::CompositionMode_DestinationIn);
  		_roundRect.paint(p, _inner, RectPart::AllCorners);
 +		{
 +			// Tristegram: glass look, a soft sheen and a thin light rim.
 +			p.setCompositionMode(QPainter::CompositionMode_SourceOver);
-+			const auto radius = double(_st.radius);
++			const auto radius = double(TristegramRadius(_st.radius));
 +			auto shape = QPainterPath();
 +			shape.addRoundedRect(QRectF(_inner), radius, radius);
 +			p.save();
@@ -710,8 +740,24 @@ index 8a2ffc7..78b1c5b 100644
 +		}
  		if (!_grabbingForPanelAnimation) {
  			p.setCompositionMode(QPainter::CompositionMode_SourceOver);
- 			_boxShadow.paint(p, _inner, _st.radius);
-@@ -1208,6 +1317,7 @@ bool PopupMenu::prepareGeometryFor(
+-			_boxShadow.paint(p, _inner, _st.radius);
++			_boxShadow.paint(p, _inner, TristegramRadius(_st.radius));
+ 		}
+ 	}, _roundingOverlay->lifetime());
+ 
+@@ -898,9 +1016,9 @@ void PopupMenu::prepareShowAnimation() {
+ 
+ 	const auto pixelRatio = style::DevicePixelRatio();
+ 	_showAnimation = std::make_unique<PanelAnimation>(_st.animation, _origin);
+-	_showAnimation->setFinalImage(std::move(cache), QRect(_inner.topLeft() * pixelRatio, _inner.size() * pixelRatio), _st.radius);
++	_showAnimation->setFinalImage(std::move(cache), QRect(_inner.topLeft() * pixelRatio, _inner.size() * pixelRatio), TristegramRadius(_st.radius));
+ 	if (_useTransparency) {
+-		_showAnimation->setCornerMasks(Images::CornersMask(_st.radius));
++		_showAnimation->setCornerMasks(Images::CornersMask(TristegramRadius(_st.radius)));
+ 	} else {
+ 		_showAnimation->setSkipShadow(true);
+ 	}
+@@ -1208,6 +1326,7 @@ bool PopupMenu::prepareGeometryFor(
  }
  
  void PopupMenu::showPrepared(TriggeredSource source) {
@@ -754,7 +800,7 @@ index 3d1a0e0..22bd7cb 100644
  	base::flat_map<
  		not_null<QAction*>,
 diff --git a/ui/widgets/widgets.style b/ui/widgets/widgets.style
-index 8b8df7d..d1ec8c0 100644
+index 8b8df7d..8b0517a 100644
 --- a/ui/widgets/widgets.style
 +++ b/ui/widgets/widgets.style
 @@ -713,7 +713,7 @@ defaultRippleAnimationBgOver: RippleAnimation(defaultRippleAnimation) {
@@ -766,12 +812,36 @@ index 8b8df7d..d1ec8c0 100644
  
  defaultActiveButton: RoundButton {
  	textFg: activeButtonFg;
-@@ -992,7 +992,7 @@ defaultPopupMenu: PopupMenu {
+@@ -950,7 +950,7 @@ defaultMenuToggleOver: Toggle(defaultToggle) {
+ 	untoggledFg: menuIconFgOver;
+ }
+ defaultMenuSeparator: MenuSeparator {
+-	padding: margins(0px, 5px, 0px, 5px);
++	padding: margins(14px, 5px, 14px, 5px);
+ 	width: 1px;
+ 	fg: menuSeparatorFg;
+ }
+@@ -966,7 +966,7 @@ defaultMenu: Menu {
+ 	itemFgShortcutOver: windowSubTextFgOver;
+ 	itemFgShortcutDisabled: menuFgDisabled;
+ 	itemIconPosition: point(0px, 0px);
+-	itemPadding: margins(17px, 8px, 17px, 7px);
++	itemPadding: margins(18px, 10px, 18px, 9px);
+ 	itemRightSkip: 6px;
+ 	itemStyle: defaultTextStyle;
+ 	itemToggle: defaultMenuToggle;
+@@ -987,12 +987,12 @@ defaultPopupMenu: PopupMenu {
+ 	shadowFallback: windowShadowFgFallback;
+ 	animation: defaultPanelAnimation;
+ 
+-	scrollPadding: margins(0px, 8px, 0px, 8px);
++	scrollPadding: margins(0px, 6px, 0px, 6px);
+ 	maxHeight: 0px;
  
  	menu: defaultMenu;
  
 -	radius: 8px;
-+	radius: 12px;
++	radius: 16px;
  	duration: 150;
  	showDuration: 200;
  }
@@ -784,3 +854,32 @@ index 8b8df7d..d1ec8c0 100644
  	textAlign: align(topleft);
  
  	placeholderFg: windowSubTextFg;
+@@ -1252,7 +1252,7 @@ defaultPeerListCheckbox: RoundImageCheckbox {
+ 	check: defaultPeerListCheck;
+ }
+ 
+-innerDropdownRadius: 8px;
++innerDropdownRadius: 16px;
+ defaultInnerDropdown: InnerDropdown {
+ 	padding: margins(10px, 10px, 10px, 10px);
+ 	shadow: roundShadowRadius8px;
+@@ -1693,8 +1693,8 @@ menuIconAttentionColor: attentionButtonFg;
+ menuIconSubmenuArrow: defaultMenuArrow;
+ 
+ menuWithIcons: Menu(defaultMenu) {
+-	itemIconPosition: point(15px, 5px);
+-	itemPadding: margins(54px, 8px, 17px, 8px);
++	itemIconPosition: point(16px, 7px);
++	itemPadding: margins(54px, 10px, 18px, 10px);
+ 
+ 	arrow: menuIconSubmenuArrow;
+ }
+@@ -1707,7 +1707,7 @@ menuAttention: Menu(defaultMenu) {
+ 	itemFgOver: attentionButtonFgOver;
+ }
+ popupMenuWithIcons: PopupMenu(defaultPopupMenu) {
+-	scrollPadding: margins(0px, 5px, 0px, 5px);
++	scrollPadding: margins(0px, 6px, 0px, 6px);
+ 	menu: menuWithIcons;
+ }
+ dropdownMenuWithIcons: DropdownMenu(defaultDropdownMenu) {
