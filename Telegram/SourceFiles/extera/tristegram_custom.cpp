@@ -151,9 +151,21 @@ void ApplyBackgroundPreset(
 	if (index < 0 || index >= int(presets.size())) {
 		return;
 	}
+	ApplyBackgroundColors(controller, presets[index]);
+}
+
+void ApplyBackgroundColors(
+		not_null<Window::SessionController*> controller,
+		const std::vector<QColor> &colors) {
+	if (colors.empty()) {
+		return;
+	}
 	auto slug = QStringList();
-	for (const auto &color : presets[index]) {
+	for (const auto &color : colors) {
 		slug.push_back(Hex(color));
+		if (slug.size() == 4) {
+			break;
+		}
 	}
 	const auto paper = Data::WallPaper::FromColorsSlug(slug.join('~'));
 	if (!paper) {

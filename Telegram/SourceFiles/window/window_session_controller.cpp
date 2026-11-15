@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "window/window_session_controller.h"
 
+#include "extera/tristegram_settings_window.h"
+
 #include "extera/extera_config.h"
 
 #include "apiwrap.h"
@@ -1644,6 +1646,12 @@ void SessionNavigation::showByInitialId(
 void SessionNavigation::showSettings(
 		Settings::Type type,
 		const SectionShow &params) {
+	// Tristegram: our settings window instead of the main page.
+	if (type == Settings::MainId()
+		&& Extera::Bool(u"tristegram_settings_window"_q)
+		&& Tristegram::InterceptMainSettings(parentController())) {
+		return;
+	}
 	showSection(
 		std::make_shared<Info::Memento>(
 			Info::Settings::Tag{ _session->user() },

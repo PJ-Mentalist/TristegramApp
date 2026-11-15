@@ -2009,6 +2009,8 @@ PRIVATE
     extera/tristegram_custom.h
     extera/tristegram_custom_ui.cpp
     extera/tristegram_custom_ui.h
+    extera/tristegram_settings_window.cpp
+    extera/tristegram_settings_window.h
     extera/extera_plugins.cpp
     extera/extera_plugins.h
     extera/extera_plugins_ui.cpp

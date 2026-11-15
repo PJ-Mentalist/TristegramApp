@@ -27,6 +27,11 @@ void ApplyBackgroundPreset(
 	not_null<Window::SessionController*> controller,
 	int index);
 
+// Gradient chat background from the user's own two to four colors.
+void ApplyBackgroundColors(
+	not_null<Window::SessionController*> controller,
+	const std::vector<QColor> &colors);
+
 // Box with a color editor; calls `done` with the chosen color.
 void ChooseColor(
 	not_null<Window::SessionController*> controller,
