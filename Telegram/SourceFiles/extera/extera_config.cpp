@@ -190,6 +190,7 @@ constexpr auto kSaveDelay = crl::time(1000);
 		{ u"menu_save"_q, true },
 		{ u"menu_repeat"_q, false },
 		{ u"menu_quick_row"_q, true },
+		{ u"tristegram_downloads_window"_q, true },
 		{ u"menu_quick_items"_q, u"reply,copy,forward"_q },
 		{ u"menu_history"_q, true },
 		{ u"menu_details"_q, true },

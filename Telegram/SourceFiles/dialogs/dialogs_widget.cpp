@@ -13,6 +13,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "extera/extera_config.h"
 #include "extera/tristegram_bar.h"
+#include "extera/tristegram_downloads.h"
 
 #include "base/call_delayed.h"
 #include "base/qt/qt_key_modifiers.h"
@@ -1493,6 +1494,10 @@ void Widget::setupDownloadBar() {
 
 			_downloadBar->clicks(
 			) | rpl::on_next([=] {
+				if (Extera::Bool(u"tristegram_downloads_window"_q)) {
+					Tristegram::ShowDownloadsWindow(controller());
+					return;
+				}
 				auto &&list = Core::App().downloadManager().loadingList();
 				const auto guard = gsl::finally([] {
 					Core::App().downloadManager().clearIfFinished();
