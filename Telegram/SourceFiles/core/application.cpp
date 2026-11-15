@@ -23,6 +23,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "extera/extera_config.h"
 #include "extera/tristegram_effects.h"
 #include "extera/tristegram_logo.h"
+#include "extera/tristegram_recorder.h"
 #include "ui/tristegram_accent.h"
 #include "extera/extera_welcome.h"
 #include "extera/extera_badges.h"
@@ -514,6 +515,7 @@ void Application::closeAdditionalWindows() {
 }
 
 Application::~Application() {
+	Tristegram::StopScreenRecording();
 	Extera::Plugins::Shutdown();
 	Extera::Config::Instance().saveNow();
 	if (_savedWindows) {

@@ -10338,6 +10338,16 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_tgs_effect_hearts" = "Hearts";
 "lng_tgs_effect_confetti" = "Confetti";
 "lng_tgs_effects_note" = "Effects take the logo colors and turn off in power saving mode.";
+"lng_tgr_title" = "Screen recording";
+"lng_tgr_button" = "Record button in the chat header";
+"lng_tgr_fps" = "Frames per second";
+"lng_tgr_quality" = "Quality";
+"lng_tgr_quality_low" = "Light";
+"lng_tgr_quality_mid" = "Balanced";
+"lng_tgr_quality_high" = "Full";
+"lng_tgr_note" = "Only the Telegram window is recorded, in H.264. On weak laptops choose Light and 15 or 24 frames: if the computer is busy, frames are skipped and the app does not slow down. Videos are saved to Videos/Tristegram.";
+"lng_tgr_started" = "Recording the Telegram window. Press the button again to stop.";
+"lng_tgr_saved" = "The recording is saved:";
 "lng_tristegram_private_avatars" = "Avatars in private chats";
 "lng_tristegram_section" = "Tristegram";
 "lng_tristegram_top_bar" = "Tristegram bar above chats";

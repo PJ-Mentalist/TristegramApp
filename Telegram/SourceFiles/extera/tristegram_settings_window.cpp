@@ -1347,6 +1347,47 @@ void FillEco(not_null<Ui::VerticalLayout*> content) {
 		AddConfigToggle(group, tr::lng_tristegram_eco(tr::now), u"tristegram_eco"_q);
 	}
 	AddNote(content, tr::lng_tgs_eco_note(tr::now));
+
+	// Tristegram: screen recording of the Telegram window.
+	AddLabel(content, tr::lng_tgr_title(tr::now));
+	{
+		const auto group = AddGroup(content);
+		AddConfigToggle(
+			group,
+			tr::lng_tgr_button(tr::now),
+			u"tristegram_screen_record"_q);
+	}
+	AddLabel(content, tr::lng_tgr_fps(tr::now));
+	{
+		const auto values = std::vector<int>{ 15, 24, 30, 60 };
+		const auto current = Extera::Int(u"tristegram_record_fps"_q);
+		const auto i = std::find(values.begin(), values.end(), current);
+		AddSegments(
+			content,
+			{ u"15"_q, u"24"_q, u"30"_q, u"60"_q },
+			(i == values.end()) ? 1 : int(i - values.begin()),
+			[=](int index) {
+				Config().setInt(u"tristegram_record_fps"_q, values[index]);
+			});
+	}
+	AddLabel(content, tr::lng_tgr_quality(tr::now));
+	{
+		const auto values = std::vector<int>{ 50, 75, 100 };
+		const auto current = Extera::Int(u"tristegram_record_scale"_q);
+		const auto i = std::find(values.begin(), values.end(), current);
+		AddSegments(
+			content,
+			{
+				tr::lng_tgr_quality_low(tr::now),
+				tr::lng_tgr_quality_mid(tr::now),
+				tr::lng_tgr_quality_high(tr::now),
+			},
+			(i == values.end()) ? 1 : int(i - values.begin()),
+			[=](int index) {
+				Config().setInt(u"tristegram_record_scale"_q, values[index]);
+			});
+	}
+	AddNote(content, tr::lng_tgr_note(tr::now));
 }
 
 void FillAccounts(

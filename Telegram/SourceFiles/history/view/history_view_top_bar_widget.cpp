@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "extera/extera_config.h"
 #include "extera/tristegram_music.h"
+#include "extera/tristegram_recorder.h"
 #include "window/section_widget.h"
 
 #include "history/history.h"
@@ -1407,6 +1408,29 @@ void TopBarWidget::updateControlsGeometry() {
 	_search->moveToRight(_rightTaken, otherButtonsTop);
 	if (!_search->isHidden()) {
 		_rightTaken += _search->width() + st::topBarCallSkip;
+	}
+
+	// Tristegram: the screen recording button next to search.
+	if (Extera::Bool(u"tristegram_screen_record"_q)
+		&& !_searchField
+		&& (_narrowRatio == 0.)
+		&& (_activeChat.section == Section::History)) {
+		if (!_tristegramRecord) {
+			_tristegramRecord = Tristegram::CreateRecordButton(
+				this,
+				_controller);
+			_tristegramRecord->widthValue(
+			) | rpl::skip(1) | rpl::on_next([=] {
+				crl::on_main(this, [=] { updateControlsGeometry(); });
+			}, _tristegramRecord->lifetime());
+		}
+		_tristegramRecord->moveToRight(
+			_rightTaken,
+			(height() - _tristegramRecord->height()) / 2);
+		_tristegramRecord->setVisible(!_animatingMode);
+		_rightTaken += _tristegramRecord->width();
+	} else if (_tristegramRecord) {
+		_tristegramRecord->hide();
 	}
 
 	// Tristegram: avatar, name and status as one group in the middle,

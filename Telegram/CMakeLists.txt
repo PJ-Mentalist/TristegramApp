@@ -2020,6 +2020,8 @@ PRIVATE
     extera/tristegram_cleaner.h
     extera/tristegram_effects.cpp
     extera/tristegram_effects.h
+    extera/tristegram_recorder.cpp
+    extera/tristegram_recorder.h
     extera/tristegram_settings_window.h
     extera/extera_plugins.cpp
     extera/extera_plugins.h

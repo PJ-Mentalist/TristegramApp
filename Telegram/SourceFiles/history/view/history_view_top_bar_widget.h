@@ -274,6 +274,7 @@ private:
 	int _rightTaken = 0;
 	int _tristegramTextWidth = 0;
 	object_ptr<Ui::RpWidget> _tristegramMusic = { nullptr };
+	object_ptr<Ui::RpWidget> _tristegramRecord = { nullptr };
 	float64 _titleShownRatio = 1.;
 	bool _animatingMode = false;
 	std::unique_ptr<Ui::InfiniteRadialAnimation> _connecting;
