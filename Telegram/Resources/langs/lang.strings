@@ -10330,6 +10330,14 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_tgc_leave_sure" = "Leave or delete the chosen chats:";
 "lng_tgc_archived" = "Moved to the archive:";
 "lng_tgc_left" = "Left chats:";
+"lng_tgs_click_effect" = "Click effect";
+"lng_tgs_type_effect" = "Typing effect";
+"lng_tgs_effect_none" = "None";
+"lng_tgs_effect_ring" = "Ring";
+"lng_tgs_effect_sparks" = "Sparks";
+"lng_tgs_effect_hearts" = "Hearts";
+"lng_tgs_effect_confetti" = "Confetti";
+"lng_tgs_effects_note" = "Effects take the logo colors and turn off in power saving mode.";
 "lng_tristegram_private_avatars" = "Avatars in private chats";
 "lng_tristegram_section" = "Tristegram";
 "lng_tristegram_top_bar" = "Tristegram bar above chats";

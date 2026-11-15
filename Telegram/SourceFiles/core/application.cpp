@@ -21,6 +21,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/checkbox.h"
 
 #include "extera/extera_config.h"
+#include "extera/tristegram_effects.h"
 #include "extera/tristegram_logo.h"
 #include "ui/tristegram_accent.h"
 #include "extera/extera_welcome.h"
@@ -628,6 +629,7 @@ void Application::run() {
 		Ui::PopupMenu::SetGlassEnabled(enabled);
 	}, _lifetime);
 	Ui::Accessible::Init();
+	Tristegram::InstallInputEffects();
 	Ui::InitTextOptions();
 	Ui::StartCachedCorners();
 	Ui::Emoji::Init();

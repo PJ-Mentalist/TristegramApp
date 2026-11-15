@@ -2018,6 +2018,8 @@ PRIVATE
     extera/tristegram_profile.h
     extera/tristegram_cleaner.cpp
     extera/tristegram_cleaner.h
+    extera/tristegram_effects.cpp
+    extera/tristegram_effects.h
     extera/tristegram_settings_window.h
     extera/extera_plugins.cpp
     extera/extera_plugins.h

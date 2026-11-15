@@ -1170,6 +1170,36 @@ void FillAnimations(not_null<Ui::VerticalLayout*> content) {
 		AddConfigToggle(group, tr::lng_tristegram_logo_shift(tr::now), u"tristegram_logo_shift"_q);
 	}
 	AddNote(content, tr::lng_tgs_animations_note(tr::now));
+
+	// Tristegram: effects where you click and where you type.
+	AddLabel(content, tr::lng_tgs_click_effect(tr::now));
+	AddSegments(
+		content,
+		{
+			tr::lng_tgs_effect_none(tr::now),
+			tr::lng_tgs_effect_ring(tr::now),
+			tr::lng_tgs_effect_sparks(tr::now),
+			tr::lng_tgs_effect_hearts(tr::now),
+			tr::lng_tgs_effect_confetti(tr::now),
+		},
+		std::clamp(Extera::Int(u"tristegram_click_effect"_q), 0, 4),
+		[](int index) {
+			Config().setInt(u"tristegram_click_effect"_q, index);
+		});
+	AddLabel(content, tr::lng_tgs_type_effect(tr::now));
+	AddSegments(
+		content,
+		{
+			tr::lng_tgs_effect_none(tr::now),
+			tr::lng_tgs_effect_sparks(tr::now),
+			tr::lng_tgs_effect_hearts(tr::now),
+			tr::lng_tgs_effect_confetti(tr::now),
+		},
+		std::clamp(Extera::Int(u"tristegram_type_effect"_q), 0, 3),
+		[](int index) {
+			Config().setInt(u"tristegram_type_effect"_q, index);
+		});
+	AddNote(content, tr::lng_tgs_effects_note(tr::now));
 }
 
 void FillAvatars(not_null<Ui::VerticalLayout*> content) {
