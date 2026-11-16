@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "core/application.h"
 
+#include "extera/tristegram_icons.h"
+
 #include "ui/widgets/scroll_area.h"
 #include "ui/widgets/side_bar_button.h"
 #include "ui/widgets/menu/menu_action.h"
@@ -627,6 +629,7 @@ void Application::run() {
 	Ui::TristegramAccent::SetFlagProvider([](const QString &key) {
 		return Extera::Bool(key);
 	});
+	Tristegram::Icons::Init(_lifetime);
 	Ui::Menu::Action::SetIconTiles(
 		Extera::Bool(u"tristegram_menu_tiles"_q));
 	Extera::Config::Instance().boolChanges(

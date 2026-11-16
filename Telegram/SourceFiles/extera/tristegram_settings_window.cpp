@@ -15,6 +15,8 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "extera/tristegram_fonts.h"
 #include "extera/tristegram_live_wallpaper.h"
 #include "extera/tristegram_logo.h"
+#include "extera/tristegram_icons.h"
+#include "ui/boxes/single_choice_box.h"
 #include "lang/lang_keys.h"
 #include "mainwindow.h"
 #include "settings/sections/settings_active_sessions.h"
@@ -44,6 +46,8 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "styles/style_boxes.h"
 #include "styles/style_layers.h"
 #include "styles/style_menu_icons.h"
+#include "styles/style_chat_helpers.h"
+#include "styles/style_filter_icons.h"
 #include "styles/style_settings.h"
 
 #include <QtGui/QMouseEvent>
@@ -68,6 +72,7 @@ enum class Section {
 	Background,
 	Animations,
 	Avatars,
+	Icons,
 	Chats,
 	Privacy,
 	Eco,
@@ -1342,6 +1347,136 @@ void FillAvatars(not_null<Ui::VerticalLayout*> content) {
 	}
 }
 
+// Row of real icons from every area, painted with the current look.
+void AddIconsPreview(not_null<Ui::VerticalLayout*> content) {
+	const auto group = AddGroup(content);
+	const auto row = group->add(
+		object_ptr<Ui::FixedHeightWidget>(group, Px(64)));
+	row->paintRequest(
+	) | rpl::on_next([=] {
+		auto p = QPainter(row);
+		const auto icons = std::vector<const style::icon*>{
+			&st::menuIconReply,
+			&st::menuIconCopy,
+			&st::menuIconForward,
+			&st::menuIconPin,
+			&st::menuIconInfo,
+			&st::historyAttach.icon,
+			&st::foldersCat,
+			&st::foldersBook,
+			&st::boxTitleClose.icon,
+		};
+		const auto count = int(icons.size());
+		const auto step = row->width() / double(count);
+		for (auto i = 0; i != count; ++i) {
+			const auto icon = icons[i];
+			const auto x = int(step * i + (step - icon->width()) / 2.);
+			const auto y = (row->height() - icon->height()) / 2;
+			icon->paint(p, x, y, row->width());
+		}
+	}, row->lifetime());
+	RepaintOnConfig(row);
+}
+
+[[nodiscard]] std::vector<QString> IconModeLabels() {
+	return {
+		tr::lng_tgs_icons_theme(tr::now),
+		tr::lng_tgs_icons_accent(tr::now),
+		tr::lng_tgs_icons_color(tr::now),
+		tr::lng_tgs_icons_logo(tr::now),
+		tr::lng_tgs_icons_gradient(tr::now),
+	};
+}
+
+void AddIconColors(
+		not_null<Ui::VerticalLayout*> group,
+		not_null<Window::SessionController*> controller,
+		Fn<QString(QString)> key) {
+	AddColorRow(
+		group,
+		controller,
+		tr::lng_tgs_icons_c1(tr::now),
+		key(u"c1"_q),
+		QColor(0x2F, 0x8C, 0xF0));
+	AddColorRow(
+		group,
+		controller,
+		tr::lng_tgs_icons_c2(tr::now),
+		key(u"c2"_q),
+		QColor(0x8B, 0x5C, 0xF6));
+	AddConfigSlider(
+		group,
+		tr::lng_tgs_icons_glow(tr::now),
+		key(u"glow"_q),
+		Range(0, 100, 5),
+		[](int value) { return QString::number(value) + '%'; });
+}
+
+void FillIcons(
+		not_null<Ui::VerticalLayout*> content,
+		not_null<Window::SessionController*> controller) {
+	using namespace Tristegram::Icons;
+	AddIconsPreview(content);
+	AddLabel(content, tr::lng_tgs_icons_style(tr::now));
+	AddSegments(
+		content,
+		IconModeLabels(),
+		std::clamp(Extera::Int(GlobalKey(u"mode"_q)), 0, kModeCount - 1),
+		[](int index) { Config().setInt(GlobalKey(u"mode"_q), index); });
+	{
+		const auto group = AddGroup(content);
+		AddIconColors(group, controller, [](QString suffix) {
+			return GlobalKey(suffix);
+		});
+	}
+	AddNote(content, tr::lng_tgs_icons_note(tr::now));
+
+	const auto areas = std::vector<std::pair<Area, QString>>{
+		{ Area::Menu, tr::lng_tgs_icons_menu(tr::now) },
+		{ Area::Compose, tr::lng_tgs_icons_compose(tr::now) },
+		{ Area::Folders, tr::lng_tgs_icons_folders(tr::now) },
+		{ Area::Buttons, tr::lng_tgs_icons_buttons(tr::now) },
+	};
+	for (const auto &entry : areas) {
+		const auto area = entry.first;
+		const auto title = entry.second;
+		AddLabel(content, title);
+		const auto group = AddGroup(content);
+		const auto modeKey = AreaKey(area, u"mode"_q);
+		auto texts = IconModeLabels();
+		texts.insert(begin(texts), tr::lng_tgs_icons_common(tr::now));
+		AddActionRow(
+			group,
+			tr::lng_tgs_icons_area_style(tr::now),
+			[=] {
+				const auto index = std::clamp(
+					Extera::Int(modeKey),
+					0,
+					int(texts.size()) - 1);
+				return texts[index];
+			},
+			[=] {
+				controller->show(Box([=](not_null<Ui::GenericBox*> box) {
+					SingleChoiceBox(box, {
+						.title = rpl::single(title),
+						.options = texts,
+						.initialSelection = std::clamp(
+							Extera::Int(modeKey),
+							0,
+							int(texts.size()) - 1),
+						.callback = [=](int index) {
+							Config().setInt(modeKey, index);
+						},
+					});
+				}));
+			});
+		AddIconColors(group, controller, [=](QString suffix) {
+			return AreaKey(area, suffix);
+		});
+	}
+	AddNote(content, tr::lng_tgs_icons_areas_note(tr::now));
+}
+
 void FillChats(
 		not_null<Ui::VerticalLayout*> content,
 		not_null<Window::SessionController*> controller) {
@@ -1607,6 +1742,7 @@ SettingsWindow::SettingsWindow(
 	item(tr::lng_tgs_s_bg(tr::now), st::menuIconPhoto, QColor(0x2F, 0xB4, 0xF0), Section::Background);
 	item(tr::lng_tgs_s_anim(tr::now), st::menuIconStar, QColor(0xFF, 0xB2, 0x1F), Section::Animations);
 	item(tr::lng_tgs_s_avatars(tr::now), st::menuIconProfile, QColor(0x22, 0xC5, 0x8B), Section::Avatars);
+	item(tr::lng_tgs_s_icons(tr::now), st::menuIconEmoji, QColor(0x2F, 0x8C, 0xF0), Section::Icons);
 	item(tr::lng_tgs_s_chats(tr::now), st::menuIconChatBubble, QColor(0x3A, 0x9B, 0xF0), Section::Chats);
 	item(tr::lng_tgs_s_privacy(tr::now), st::menuIconStealth, QColor(0x5B, 0x6B, 0xE8), Section::Privacy);
 	item(tr::lng_tgs_s_eco(tr::now), st::menuIconPowerUsage, QColor(0x3C, 0xB3, 0x71), Section::Eco);
@@ -1920,6 +2056,7 @@ void SettingsWindow::refillPane() {
 	case Section::Background: FillBackground(inner, _controller); break;
 	case Section::Animations: FillAnimations(inner); break;
 	case Section::Avatars: FillAvatars(inner); break;
+	case Section::Icons: FillIcons(inner, _controller); break;
 	case Section::Chats: FillChats(inner, _controller); break;
 	case Section::Privacy: FillPrivacy(inner, _controller); break;
 	case Section::Eco: FillEco(inner); break;

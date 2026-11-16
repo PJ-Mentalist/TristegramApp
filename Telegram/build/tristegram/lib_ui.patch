@@ -423,6 +423,222 @@ index e194c4d..2bc4212 100644
  enum class FontFlag : uchar {
  	Bold       = 0x01,
  	Italic     = 0x02,
+diff --git a/ui/style/style_core_icon.cpp b/ui/style/style_core_icon.cpp
+index c1792da..ec13154 100644
+--- a/ui/style/style_core_icon.cpp
++++ b/ui/style/style_core_icon.cpp
+@@ -5,17 +5,30 @@
+ // https://github.com/desktop-app/legal/blob/master/LEGAL
+ //
+ #include "ui/style/style_core_icon.h"
++#include "ui/style/style_core_icon_effects.h"
+ 
+ #include "ui/style/style_core_palette.h"
+ #include "ui/style/style_core.h"
+ #include "ui/painter.h"
++#include "ui/image/image_prepare.h"
+ #include "base/basic_types.h"
++#include "base/algorithm.h"
+ 
+ #include <QtCore/QMutex>
+ #include <QtGui/QPainter>
++#include <QtGui/QLinearGradient>
+ #include <QtSvg/QSvgRenderer>
+ 
++#include <algorithm>
++#include <cmath>
++
+ namespace style {
++namespace {
++
++IconEffectProvider GlobalIconEffects;
++
++} // namespace
++
+ namespace internal {
+ namespace {
+ 
+@@ -26,6 +39,94 @@ namespace {
+ 		| uint32(c.alpha());
+ }
+ 
++[[nodiscard]] const IconEffect *EffectFor(const Color &color) {
++	return GlobalIconEffects ? GlobalIconEffects(color.get()) : nullptr;
++}
++
++// The color key with the current icon effect mixed in, so that cached
++// pictures are made again when the effect settings change.
++[[nodiscard]] uint32 EffectiveKey(const Color &color) {
++	const auto base = ColorKey(color->c);
++	const auto effect = EffectFor(color);
++	return effect ? (base ^ (uint32(effect->key) * 0x9E3779B1U)) : base;
++}
++
++[[nodiscard]] QImage ApplyIconEffect(
++		const QImage &mask,
++		const QColor &base,
++		const IconEffect &effect) {
++	auto shape = colorizeImage(mask, QColor(255, 255, 255));
++	const auto ratio = DevicePixelRatio();
++	const auto sourceRatio = shape.devicePixelRatio();
++	shape.setDevicePixelRatio(1.);
++	const auto from = effect.from.isValid() ? effect.from : base;
++	const auto to = effect.to.isValid() ? effect.to : from;
++	const auto alpha = base.alphaF();
++	auto painted = QImage(
++		shape.size(),
++		QImage::Format_ARGB32_Premultiplied);
++	painted.fill(Qt::transparent);
++	{
++		auto p = QPainter(&painted);
++		if (from == to) {
++			p.fillRect(painted.rect(), from);
++		} else {
++			const auto w = double(painted.width());
++			const auto h = double(painted.height());
++			const auto radians = effect.angle * 3.14159265358979 / 180.;
++			const auto dx = std::cos(radians) * w / 2.;
++			const auto dy = std::sin(radians) * h / 2.;
++			auto gradient = QLinearGradient(
++				QPointF(w / 2. - dx, h / 2. - dy),
++				QPointF(w / 2. + dx, h / 2. + dy));
++			gradient.setColorAt(0., from);
++			gradient.setColorAt(1., to);
++			p.fillRect(painted.rect(), gradient);
++		}
++		p.setCompositionMode(QPainter::CompositionMode_DestinationIn);
++		p.drawImage(0, 0, shape);
++	}
++	if (effect.glow <= 0.) {
++		if (alpha < 1.) {
++			auto result = QImage(
++				painted.size(),
++				QImage::Format_ARGB32_Premultiplied);
++			result.fill(Qt::transparent);
++			auto p = QPainter(&result);
++			p.setOpacity(alpha);
++			p.drawImage(0, 0, painted);
++			p.end();
++			result.setDevicePixelRatio(sourceRatio);
++			return result;
++		}
++		painted.setDevicePixelRatio(sourceRatio);
++		return painted;
++	}
++	auto result = QImage(
++		painted.size(),
++		QImage::Format_ARGB32_Premultiplied);
++	result.fill(Qt::transparent);
++	{
++		const auto radius = std::max(int(std::round(2.5 * ratio)), 1);
++		auto halo = Images::BlurLargeImage(base::duplicate(painted), radius);
++		auto p = QPainter(&result);
++		p.setOpacity(alpha * std::clamp(effect.glow, 0., 1.));
++		p.drawImage(0, 0, halo);
++		p.drawImage(0, 0, halo);
++		p.setOpacity(alpha);
++		p.drawImage(0, 0, painted);
++	}
++	result.setDevicePixelRatio(sourceRatio);
++	return result;
++}
++
++[[nodiscard]] QImage MakeIconImage(const QImage &mask, const Color &color) {
++	if (const auto effect = EffectFor(color)) {
++		return ApplyIconEffect(mask, color->c, *effect);
++	}
++	return colorizeImage(mask, color);
++}
++
+ base::flat_map<const IconMask*, QImage> IconMasks;
+ QMutex IconMasksMutex;
+ 
+@@ -388,7 +489,7 @@ void MonoIcon::ensureLoaded() const {
+ 
+ void MonoIcon::ensureColorized() const {
+ 	ensureLoaded();
+-	if (!_pixmap.isNull() && ColorKey(_color->c) != _pixmapColorKey) {
++	if (!_pixmap.isNull() && EffectiveKey(_color) != _pixmapColorKey) {
+ 		createCachedPixmap();
+ 	}
+ }
+@@ -403,7 +504,7 @@ void MonoIcon::ensureColorizedImage(QColor color) const {
+ }
+ 
+ void MonoIcon::createCachedPixmap() const {
+-	const auto colorKey = ColorKey(_color->c);
++	const auto colorKey = EffectiveKey(_color);
+ 	_pixmapColorKey = colorKey;
+ 	if (_ownPixmap) {
+ 		_pixmap = QPixmap::fromImage(colorizeImage(_maskImage, _color));
+@@ -411,7 +512,7 @@ void MonoIcon::createCachedPixmap() const {
+ 		const auto key = std::make_pair(_mask, colorKey);
+ 		auto j = iconPixmaps.find(key);
+ 		if (j == end(iconPixmaps)) {
+-			auto image = colorizeImage(_maskImage, _color);
++			auto image = MakeIconImage(_maskImage, _color);
+ 			j = iconPixmaps.emplace(
+ 				key,
+ 				QPixmap::fromImage(std::move(image))).first;
+@@ -536,4 +637,15 @@ void DestroyIcons() {
+ }
+ 
+ } // namespace internal
++
++void SetIconEffectProvider(IconEffectProvider provider) {
++	GlobalIconEffects = std::move(provider);
++	RefreshIconEffects();
++}
++
++void RefreshIconEffects() {
++	// Icons keep their own copies, the shared cache only grows otherwise.
++	internal::iconPixmaps.clear();
++}
++
+ } // namespace style
+diff --git a/ui/style/style_core_icon_effects.h b/ui/style/style_core_icon_effects.h
+new file mode 100644
+index 0000000..8c570b1
+--- /dev/null
++++ b/ui/style/style_core_icon_effects.h
+@@ -0,0 +1,37 @@
++// This file is part of Desktop App Toolkit,
++// a set of libraries for developing nice desktop applications.
++//
++// For license and copyright information please follow this link:
++// https://github.com/desktop-app/legal/blob/master/LEGAL
++//
++#pragma once
++
++#include <QtGui/QColor>
++
++#include <functional>
++
++namespace style {
++namespace internal {
++class ColorData;
++} // namespace internal
++
++// Tristegram: a common look for monochrome icons. The provider returns
++// an effect for the palette color an icon is painted with, or nullptr
++// to keep that icon as it is.
++struct IconEffect {
++	QColor from; // invalid: the icon's own color
++	QColor to; // valid and different from `from`: a gradient
++	double angle = 135.; // gradient direction, degrees
++	double glow = 0.; // 0..1
++	unsigned int key = 0; // nonzero, unique for every effect
++};
++
++using IconEffectProvider = std::function<
++	const IconEffect*(const internal::ColorData*)>;
++
++void SetIconEffectProvider(IconEffectProvider provider);
++
++// Cached icon pictures are made again on their next paint.
++void RefreshIconEffects();
++
++} // namespace style
 diff --git a/ui/toast/toast_widget.cpp b/ui/toast/toast_widget.cpp
 index 433b8f3..42763a6 100644
 --- a/ui/toast/toast_widget.cpp
