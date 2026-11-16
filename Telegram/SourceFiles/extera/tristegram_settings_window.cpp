@@ -824,10 +824,11 @@ void FillLook(
 		AddConfigToggle(group, tr::lng_tgs_v_glow(tr::now), u"tristegram_profile_glow"_q);
 		AddConfigToggle(group, tr::lng_tgs_v_arrows(tr::now), u"tristegram_profile_arrows"_q);
 		AddConfigToggle(group, tr::lng_tgs_v_music(tr::now), u"tristegram_header_music"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_hide_player(tr::now), u"tristegram_hide_tg_player"_q);
 		AddConfigToggle(group, tr::lng_tgs_v_downloads(tr::now), u"tristegram_downloads_window"_q);
 		AddConfigToggle(group, tr::lng_tgs_v_record(tr::now), u"tristegram_screen_record"_q);
 		AddConfigToggle(group, tr::lng_tgs_v_scrollbar(tr::now), u"tristegram_gradient_scrollbar"_q);
-		AddConfigToggle(group, tr::lng_tgs_v_typing(tr::now), u"tristegram_typing_gradient"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_typing(tr::now), u"tristegram_typing_gradient_v2"_q);
 		AddConfigToggle(group, tr::lng_tgs_v_motion(tr::now), u"tristegram_chatlist_motion"_q);
 		AddConfigToggle(group, tr::lng_tgs_v_shadow(tr::now), u"tristegram_soft_shadow"_q);
 		AddConfigToggle(group, tr::lng_tgs_v_cards(tr::now), u"tristegram_reply_cards"_q);
@@ -1601,6 +1602,62 @@ void FillIcons(
 		});
 	}
 	AddNote(content, tr::lng_tgs_icons_areas_note(tr::now));
+
+	AddLabel(content, tr::lng_tgs_tiles_title(tr::now));
+	{
+		const auto group = AddGroup(content);
+		AddConfigToggle(
+			group,
+			tr::lng_tgs_v_tiles(tr::now),
+			u"tristegram_menu_tiles"_q);
+		const auto texts = std::vector<QString>{
+			tr::lng_tgs_tiles_mixed(tr::now),
+			tr::lng_tgs_icons_accent(tr::now),
+			tr::lng_tgs_icons_color(tr::now),
+			tr::lng_tgs_icons_logo(tr::now),
+			tr::lng_tgs_icons_gradient(tr::now),
+			tr::lng_tgs_tiles_glass(tr::now),
+		};
+		const auto modeKey = u"tristegram_tiles_mode"_q;
+		const auto title = tr::lng_tgs_tiles_title(tr::now);
+		AddActionRow(
+			group,
+			tr::lng_tgs_tiles_style(tr::now),
+			[=] {
+				return texts[std::clamp(
+					Extera::Int(modeKey),
+					0,
+					int(texts.size()) - 1)];
+			},
+			[=] {
+				controller->show(Box([=](not_null<Ui::GenericBox*> box) {
+					SingleChoiceBox(box, {
+						.title = rpl::single(title),
+						.options = texts,
+						.initialSelection = std::clamp(
+							Extera::Int(modeKey),
+							0,
+							int(texts.size()) - 1),
+						.callback = [=](int index) {
+							Config().setInt(modeKey, index);
+						},
+					});
+				}));
+			});
+		AddColorRow(
+			group,
+			controller,
+			tr::lng_tgs_icons_c1(tr::now),
+			u"tristegram_tiles_c1"_q,
+			QColor(0xF0, 0x7A, 0x0C));
+		AddColorRow(
+			group,
+			controller,
+			tr::lng_tgs_icons_c2(tr::now),
+			u"tristegram_tiles_c2"_q,
+			QColor(0xE8, 0x31, 0x8A));
+	}
+	AddNote(content, tr::lng_tgs_tiles_note(tr::now));
 }
 
 void FillChats(
@@ -1628,6 +1685,62 @@ void FillChats(
 		[](int index) {
 			Config().setBool(u"time_with_seconds"_q, index == 1);
 		});
+	AddSegments(
+		content,
+		{ u"24h"_q, u"AM / PM"_q },
+		Extera::Bool(u"time_12h"_q) ? 1 : 0,
+		[](int index) {
+			Config().setBool(u"time_12h"_q, index == 1);
+		});
+	AddLabel(content, tr::lng_tgs_names_title(tr::now));
+	{
+		const auto group = AddGroup(content);
+		const auto texts = std::vector<QString>{
+			tr::lng_tgs_names_telegram(tr::now),
+			tr::lng_tgs_icons_accent(tr::now),
+			tr::lng_tgs_icons_color(tr::now),
+			tr::lng_tgs_icons_logo(tr::now),
+			tr::lng_tgs_icons_gradient(tr::now),
+		};
+		const auto modeKey = u"tristegram_name_mode"_q;
+		const auto title = tr::lng_tgs_names_title(tr::now);
+		const auto current = [=] {
+			const auto mode = Extera::Int(modeKey);
+			return (!mode && Extera::Bool(u"name_accent"_q))
+				? 1
+				: std::clamp(mode, 0, int(texts.size()) - 1);
+		};
+		AddActionRow(
+			group,
+			tr::lng_tgs_names_style(tr::now),
+			[=] { return texts[current()]; },
+			[=] {
+				controller->show(Box([=](not_null<Ui::GenericBox*> box) {
+					SingleChoiceBox(box, {
+						.title = rpl::single(title),
+						.options = texts,
+						.initialSelection = current(),
+						.callback = [=](int index) {
+							Config().setBool(u"name_accent"_q, false);
+							Config().setInt(modeKey, index);
+						},
+					});
+				}));
+			});
+		AddColorRow(
+			group,
+			controller,
+			tr::lng_tgs_icons_c1(tr::now),
+			u"tristegram_name_c1"_q,
+			QColor(0xF0, 0x7A, 0x0C));
+		AddColorRow(
+			group,
+			controller,
+			tr::lng_tgs_icons_c2(tr::now),
+			u"tristegram_name_c2"_q,
+			QColor(0xE8, 0x31, 0x8A));
+	}
+	AddNote(content, tr::lng_tgs_names_note(tr::now));
 	AddLabel(content, tr::lng_tgs_text_bubbles(tr::now));
 	{
 		const auto group = AddGroup(content);

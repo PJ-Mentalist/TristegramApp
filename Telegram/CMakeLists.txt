@@ -2004,6 +2004,8 @@ PRIVATE
     extera/tristegram_motion.h
     extera/tristegram_templates.cpp
     extera/tristegram_templates.h
+    extera/tristegram_names.cpp
+    extera/tristegram_names.h
     extera/tristegram_icons.cpp
     extera/tristegram_icons.h
     extera/tristegram_logo.h

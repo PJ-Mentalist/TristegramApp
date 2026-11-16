@@ -6,6 +6,8 @@ For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_reply.h"
+
+#include "extera/tristegram_names.h"
 #include "extera/tristegram_bubbles.h"
 
 #include "extera/extera_config.h"
@@ -1032,6 +1034,17 @@ void Reply::paint(
 						colorIndexPlusOne - 1,
 						colorCollectible)
 					: stm->msgServiceFg->c);
+				if (inBubble && !context.outbg) {
+					// Tristegram: names in a gradient, chosen in settings.
+					const auto left = x
+						+ st::historyReplyPadding.left()
+						+ previewSkip;
+					if (const auto pen = Tristegram::Names::GradientPen(
+							left,
+							std::min(namew, _name.maxWidth()))) {
+						p.setPen(*pen);
+					}
+				}
 				_name.drawLeftElided(
 					p,
 					x + st::historyReplyPadding.left() + previewSkip,

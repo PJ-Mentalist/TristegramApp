@@ -29,6 +29,7 @@ std::vector<Entry> Entries;
 std::array<style::IconEffect, kAreaCount * 2> Effects;
 std::array<bool, kAreaCount * 2> Active = {};
 unsigned int KeySeed = 0;
+style::MenuTileColors Tiles;
 
 [[nodiscard]] QString AreaName(Area area) {
 	switch (area) {
@@ -124,6 +125,36 @@ void Rebuild() {
 		Effects[i * 2 + 1] = over;
 		Active[i * 2 + 1] = active;
 	}
+	{
+		// Tiles under menu icons: 0 keeps the colorful default.
+		const auto c1 = ColorValue(u"tristegram_tiles_c1"_q, QColor(0xF0, 0x7A, 0x0C));
+		const auto c2 = ColorValue(u"tristegram_tiles_c2"_q, QColor(0xE8, 0x31, 0x8A));
+		auto tiles = style::MenuTileColors();
+		switch (Extera::Int(u"tristegram_tiles_mode"_q)) {
+		case 1:
+			tiles.from = st::windowActiveTextFg->c.lighter(112);
+			tiles.to = st::windowActiveTextFg->c;
+			break;
+		case 2:
+			tiles.from = c1;
+			tiles.to = c1;
+			break;
+		case 3:
+			tiles.from = logo.from;
+			tiles.to = logo.to;
+			break;
+		case 4:
+			tiles.from = c1;
+			tiles.to = c2;
+			break;
+		case 5:
+			tiles.from = QColor(255, 255, 255, 30);
+			tiles.to = QColor(255, 255, 255, 18);
+			tiles.icon = st::windowFg->c;
+			break;
+		}
+		Tiles = tiles;
+	}
 	style::RefreshIconEffects();
 	for (const auto widget : QApplication::topLevelWidgets()) {
 		widget->update();
@@ -155,9 +186,11 @@ void Init(rpl::lifetime &lifetime) {
 		}
 		return nullptr;
 	});
+	style::SetMenuTileProvider([] { return Tiles; });
 	Extera::Config::Instance().changes(
 	) | rpl::filter([](const QString &key) {
 		return key.startsWith(u"tristegram_icons_"_q)
+			|| key.startsWith(u"tristegram_tiles_"_q)
 			|| key.startsWith(u"tristegram_logo"_q);
 	}) | rpl::on_next([] {
 		Rebuild();

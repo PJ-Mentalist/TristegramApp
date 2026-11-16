@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "info/info_content_widget.h"
 #include "ui/painter.h"
 #include "ui/widgets/box_content_divider.h"
+#include "ui/widgets/buttons.h"
 #include "window/section_widget.h"
 #include "extera/extera_config.h"
 
@@ -210,6 +211,13 @@ void ContentWidget::paintGlass(QRect clip) {
 				if (const auto divider
 					= dynamic_cast<Ui::BoxContentDivider*>(child)) {
 					dividers.push_back(divider);
+				} else if (const auto button
+					= dynamic_cast<Ui::SettingsButton*>(child)) {
+					if (!button->property("tristegramGlass").toBool()) {
+						button->setProperty("tristegramGlass", true);
+						button->setAttribute(Qt::WA_OpaquePaintEvent, false);
+						button->update();
+					}
 				}
 				stack.push_back(child);
 			}

@@ -29,6 +29,14 @@ namespace {
 } // namespace
 
 QString FormatTime(const QTime &time) {
+	if (Bool(u"time_12h"_q)) {
+		// Tristegram: 12-hour clock with AM / PM in any language.
+		return QLocale::c().toString(
+			time,
+			Bool(u"time_with_seconds"_q)
+				? u"h:mm:ss AP"_q
+				: u"h:mm AP"_q);
+	}
 	const auto locale = QLocale();
 	if (!Bool(u"time_with_seconds"_q)) {
 		return locale.toString(time, QLocale::ShortFormat);

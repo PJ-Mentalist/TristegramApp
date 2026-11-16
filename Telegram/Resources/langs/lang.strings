@@ -10153,6 +10153,16 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_tristegram_bgs_title" = "Chat background";
 "lng_tristegram_preview_tap" = "Tap the logo to play the animation";
 "lng_tristegram_glass_menus" = "Frosted glass menus";
+"lng_tgs_v_hide_player" = "Hide the Telegram player bar for music";
+"lng_tgs_names_title" = "Name colors";
+"lng_tgs_names_style" = "Names in chats";
+"lng_tgs_names_telegram" = "As in Telegram";
+"lng_tgs_names_note" = "Sender names in groups and in replies. «As in Telegram» keeps everyone's own profile color.";
+"lng_tgs_tiles_title" = "Menu icon tiles";
+"lng_tgs_tiles_style" = "Tile color";
+"lng_tgs_tiles_mixed" = "Colorful";
+"lng_tgs_tiles_glass" = "Glass";
+"lng_tgs_tiles_note" = "Colored squares under the icons in context menus. «Own color» uses color 1, «Own gradient» goes from color 1 to color 2.";
 "lng_tgs_s_icons" = "Icons";
 "lng_tgs_icons_style" = "Common style";
 "lng_tgs_icons_theme" = "Theme";

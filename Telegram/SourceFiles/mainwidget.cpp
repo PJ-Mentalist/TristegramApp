@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "mainwidget.h"
 
+#include "extera/extera_config.h"
+
 #include "api/api_updates.h"
 #include "api/api_views.h"
 #include "data/components/scheduled_messages.h"
@@ -915,7 +917,16 @@ void MainWidget::handleAudioUpdate(const Media::Player::TrackState &state) {
 		const auto ttlSeconds = item
 			&& item->media()
 			&& item->media()->ttlSeconds();
-		if (!ttlSeconds) {
+		// Tristegram: songs are controlled from the music window and the
+		// capsule in the chat header, without the Telegram player bar.
+		const auto hideForSong = (state.id.type() == AudioMsgId::Type::Song)
+			&& Extera::Bool(u"tristegram_hide_tg_player"_q);
+		if (hideForSong) {
+			if (_player && _player->toggled()) {
+				closeBothPlayers();
+			}
+			Shortcuts::ToggleMediaShortcuts(true);
+		} else if (!ttlSeconds) {
 			createPlayer();
 		}
 	} else if (state.state == State::StoppedAtStart) {

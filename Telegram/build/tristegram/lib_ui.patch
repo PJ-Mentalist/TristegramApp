@@ -432,7 +432,7 @@ index e194c4d..2bc4212 100644
  	Bold       = 0x01,
  	Italic     = 0x02,
 diff --git a/ui/style/style_core_icon.cpp b/ui/style/style_core_icon.cpp
-index c1792da..ec13154 100644
+index c1792da..d2e9557 100644
 --- a/ui/style/style_core_icon.cpp
 +++ b/ui/style/style_core_icon.cpp
 @@ -5,17 +5,30 @@
@@ -588,7 +588,7 @@ index c1792da..ec13154 100644
  			j = iconPixmaps.emplace(
  				key,
  				QPixmap::fromImage(std::move(image))).first;
-@@ -536,4 +637,15 @@ void DestroyIcons() {
+@@ -536,4 +637,29 @@ void DestroyIcons() {
  }
  
  } // namespace internal
@@ -596,6 +596,20 @@ index c1792da..ec13154 100644
 +void SetIconEffectProvider(IconEffectProvider provider) {
 +	GlobalIconEffects = std::move(provider);
 +	RefreshIconEffects();
++}
++
++namespace {
++
++std::function<MenuTileColors()> GlobalMenuTiles;
++
++} // namespace
++
++void SetMenuTileProvider(std::function<MenuTileColors()> provider) {
++	GlobalMenuTiles = std::move(provider);
++}
++
++MenuTileColors CurrentMenuTileColors() {
++	return GlobalMenuTiles ? GlobalMenuTiles() : MenuTileColors();
 +}
 +
 +void RefreshIconEffects() {
@@ -606,10 +620,10 @@ index c1792da..ec13154 100644
  } // namespace style
 diff --git a/ui/style/style_core_icon_effects.h b/ui/style/style_core_icon_effects.h
 new file mode 100644
-index 0000000..8c570b1
+index 0000000..c2fc694
 --- /dev/null
 +++ b/ui/style/style_core_icon_effects.h
-@@ -0,0 +1,37 @@
+@@ -0,0 +1,49 @@
 +// This file is part of Desktop App Toolkit,
 +// a set of libraries for developing nice desktop applications.
 +//
@@ -645,6 +659,18 @@ index 0000000..8c570b1
 +
 +// Cached icon pictures are made again on their next paint.
 +void RefreshIconEffects();
++
++// Tristegram: colors of the tiles under menu icons. An invalid `from`
++// keeps the default color for every icon, an invalid `icon` paints
++// the icon white.
++struct MenuTileColors {
++	QColor from;
++	QColor to;
++	QColor icon;
++};
++
++void SetMenuTileProvider(std::function<MenuTileColors()> provider);
++[[nodiscard]] MenuTileColors CurrentMenuTileColors();
 +
 +} // namespace style
 diff --git a/ui/toast/toast_widget.cpp b/ui/toast/toast_widget.cpp
@@ -694,6 +720,26 @@ index 948271f..e3e982a 100644
  	QPainter p(this);
  
  	p.fillRect(e->rect(), _st.bg);
+diff --git a/ui/widgets/buttons.cpp b/ui/widgets/buttons.cpp
+index a9f44e9..cc19058 100644
+--- a/ui/widgets/buttons.cpp
++++ b/ui/widgets/buttons.cpp
+@@ -1006,6 +1006,15 @@ void SettingsButton::paintEvent(QPaintEvent *e) {
+ }
+ 
+ void SettingsButton::paintBg(Painter &p, const QRect &rect, bool over) const {
++	if (property("tristegramGlass").toBool()) {
++		// Tristegram: on a frosted card only the hover is painted.
++		if (over) {
++			auto color = _st.textBgOver->c;
++			color.setAlphaF(color.alphaF() * 0.5);
++			p.fillRect(rect, color);
++		}
++		return;
++	}
+ 	p.fillRect(rect, over ? _st.textBgOver : _st.textBg);
+ }
+ 
 diff --git a/ui/widgets/fields/input_field.cpp b/ui/widgets/fields/input_field.cpp
 index cf7b90d..c5dcc63 100644
 --- a/ui/widgets/fields/input_field.cpp
@@ -832,13 +878,15 @@ index 56723aa..49c8941 100644
  
  	positionValue(
 diff --git a/ui/widgets/menu/menu_action.cpp b/ui/widgets/menu/menu_action.cpp
-index 4c16b67..f6c0f79 100644
+index 4c16b67..6360124 100644
 --- a/ui/widgets/menu/menu_action.cpp
 +++ b/ui/widgets/menu/menu_action.cpp
-@@ -6,10 +6,13 @@
+@@ -6,10 +6,15 @@
  //
  #include "ui/widgets/menu/menu_action.h"
  
++#include "ui/style/style_core_icon_effects.h"
++
 +#include <array>
 +
  #include "ui/effects/ripple_animation.h"
@@ -849,7 +897,7 @@ index 4c16b67..f6c0f79 100644
  
  namespace Ui::Menu {
  namespace {
-@@ -90,18 +93,60 @@ QAccessible::State Action::accessibilityChildState(int index) const {
+@@ -90,18 +95,60 @@ QAccessible::State Action::accessibilityChildState(int index) const {
  	return state;
  }
  
@@ -915,7 +963,7 @@ index 4c16b67..f6c0f79 100644
  }
  
  void Action::paintText(Painter &p) {
-@@ -118,10 +163,45 @@ void Action::paint(Painter &p) {
+@@ -118,10 +165,58 @@ void Action::paint(Painter &p) {
  	const auto selected = isSelected();
  	paintBackground(p, selected);
  	if (enabled) {
@@ -941,21 +989,34 @@ index 4c16b67..f6c0f79 100644
 +				_st.itemIconPosition.y() - extra,
 +				size + 2 * extra,
 +				size + 2 * extra);
-+			auto color = TristegramTileColor(_icon, _st.itemFg->c);
++			const auto custom = style::CurrentMenuTileColors();
++			auto from = custom.from;
++			auto to = custom.to.isValid() ? custom.to : custom.from;
++			if (!from.isValid()) {
++				to = TristegramTileColor(_icon, _st.itemFg->c);
++				from = to.lighter(118);
++			}
 +			if (!enabled) {
-+				color.setAlphaF(0.45);
++				from.setAlphaF(from.alphaF() * 0.45);
++				to.setAlphaF(to.alphaF() * 0.45);
 +			}
 +			{
 +				auto hq = PainterHighQualityEnabler(p);
 +				p.setPen(Qt::NoPen);
-+				auto fill = QLinearGradient(tile.topLeft(), tile.bottomLeft());
-+				fill.setColorAt(0., color.lighter(118));
-+				fill.setColorAt(1., color);
++				auto fill = custom.from.isValid()
++					? QLinearGradient(tile.topLeft(), tile.bottomRight())
++					: QLinearGradient(tile.topLeft(), tile.bottomLeft());
++				fill.setColorAt(0., from);
++				fill.setColorAt(1., to);
 +				p.setBrush(fill);
 +				const auto radius = tile.width() * 0.27;
 +				p.drawRoundedRect(tile, radius, radius);
 +			}
-+			icon->paint(p, _st.itemIconPosition, width(), QColor(255, 255, 255));
++			icon->paint(
++				p,
++				_st.itemIconPosition,
++				width(),
++				custom.icon.isValid() ? custom.icon : QColor(255, 255, 255));
 +		} else {
 +			icon->paint(p, _st.itemIconPosition, width());
 +		}

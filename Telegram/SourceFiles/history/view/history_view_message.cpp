@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_message.h"
 
+#include "extera/tristegram_names.h"
+
 #include "extera/extera_feed.h"
 #include "extera/extera_badges.h"
 
@@ -2746,6 +2748,14 @@ void Message::paintFromName(
 		trect.topLeft(),
 		nameFg,
 		context.now);
+	if (!context.outbg) {
+		// Tristegram: names in a gradient, chosen in settings.
+		if (const auto pen = Tristegram::Names::GradientPen(
+				availableLeft,
+				nameWidth)) {
+			p.setPen(*pen);
+		}
+	}
 	nameText->draw(p, {
 		.position = { availableLeft, trect.top() },
 		.availableWidth = nameAvailableWidth,

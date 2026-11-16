@@ -152,7 +152,7 @@ bool SendActionPainter::paint(
 		crl::time ms) {
 	if (_sendActionAnimation
 		&& !_tristegramLayer
-		&& Extera::Bool(u"tristegram_typing_gradient"_q)
+		&& Extera::Bool(u"tristegram_typing_gradient_v2"_q)
 		&& (color->c != st::dialogsTextFgServiceActive->c)) {
 		// Tristegram: the typing line drawn in the logo gradient.
 		const auto ratio = style::DevicePixelRatio();
