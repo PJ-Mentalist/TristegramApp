@@ -10153,6 +10153,14 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_tristegram_bgs_title" = "Chat background";
 "lng_tristegram_preview_tap" = "Tap the logo to play the animation";
 "lng_tristegram_glass_menus" = "Frosted glass menus";
+"lng_tgs_v_theme_fade" = "Smooth theme switching";
+"lng_tgs_v_splash" = "Logo animation on startup";
+"lng_tgs_v_blur" = "Blur message previews until hover";
+"lng_tgs_v_templates" = "Phrase templates (right click on the message field)";
+"lng_tgs_templates_menu" = "Templates";
+"lng_tgs_templates_edit" = "Edit templates…";
+"lng_tgs_templates_title" = "Phrase templates";
+"lng_tgs_templates_placeholder" = "One phrase per line";
 "lng_tgs_v_folders" = "Folder sidebar tiles";
 "lng_tgs_v_viewer" = "Glass media viewer buttons";
 "lng_tgs_v_tiles" = "Colored icon tiles in menus";
@@ -10160,7 +10168,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_tgs_v_cards" = "Replies and links as cards";
 "lng_tgs_v_voice" = "Gradient voice waveform";
 "lng_tgs_v_reactions" = "Glass reactions";
-"lng_tgs_new_design" = "What's new (v7-v10)";
+"lng_tgs_new_design" = "What's new (v7-v11)";
 "lng_tgs_new_design_note" = "Every new effect can be turned off here.";
 "lng_tgs_v_badges" = "Gradient unread badges";
 "lng_tgs_v_dates" = "Dates in capsules";

@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "window/themes/window_theme.h"
 
+#include "extera/tristegram_motion.h"
+
 #include "window/themes/window_theme_preview.h"
 #include "window/themes/window_themes_chat.h"
 #include "window/themes/window_themes_embedded.h"
@@ -1110,6 +1112,7 @@ void ChatBackground::restoreAdjustableColors() {
 }
 
 void ChatBackground::setTestingTheme(Instance &&theme) {
+	Tristegram::PrepareThemeFade();
 	style::main_palette::apply(theme.palette);
 	saveAdjustableColors();
 
@@ -1142,6 +1145,7 @@ void ChatBackground::setTestingTheme(Instance &&theme) {
 }
 
 void ChatBackground::setTestingDefaultTheme() {
+	Tristegram::PrepareThemeFade();
 	applyDefaultThemeAccentColorizer();
 
 	saveForRevert();
@@ -1473,6 +1477,7 @@ void Revert() {
 	if (!AreTestingTheme()) {
 		return;
 	}
+	Tristegram::PrepareThemeFade();
 	style::main_palette::load(GlobalApplying.paletteForRevert);
 	Background()->saveAdjustableColors();
 

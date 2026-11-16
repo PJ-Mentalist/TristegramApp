@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "mainwindow.h"
 
+#include "extera/tristegram_motion.h"
+
 #include "data/data_document.h"
 #include "data/data_session.h"
 #include "data/data_document_media.h"
@@ -156,6 +158,7 @@ void MainWindow::finishFirstShow() {
 	} else if (!_passcodeLock && !_setupEmailLock && _intro) {
 		_intro->setInnerFocus();
 	}
+	Tristegram::ShowSplash(body());
 }
 
 void MainWindow::clearWidgetsHook() {

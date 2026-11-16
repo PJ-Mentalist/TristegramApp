@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/history_widget.h"
 
+#include "extera/tristegram_templates.h"
+#include "ui/layers/generic_box.h"
+
 #include "extera/tristegram_logo.h"
 #include "ui/wrap/fade_wrap.h"
 
@@ -681,6 +684,15 @@ HistoryWidget::HistoryWidget(
 		request.menu->addAction(tr::lng_exd_copy_emoji_id(tr::now), [=] {
 			QGuiApplication::clipboard()->setText(text);
 			controller->showToast(tr::lng_exd_emoji_id_copied(tr::now));
+		});
+	});
+	_field->addContextMenuHook([=](
+			Ui::InputField::ContextMenuRequest request) {
+		if (!Tristegram::TemplatesEnabled()) {
+			return;
+		}
+		Tristegram::FillTemplatesMenu(request.menu, _field, [=] {
+			controller->show(Box(Tristegram::EditTemplatesBox));
 		});
 	});
 	_field->setMimeDataHook(WrappedMessageFieldMimeHook([=](

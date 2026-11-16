@@ -830,6 +830,10 @@ void FillLook(
 		AddConfigToggle(group, tr::lng_tgs_v_folders(tr::now), u"tristegram_folder_tiles"_q);
 		AddConfigToggle(group, tr::lng_tgs_v_viewer(tr::now), u"tristegram_glass_viewer"_q);
 		AddConfigToggle(group, tr::lng_tgs_v_tiles(tr::now), u"tristegram_menu_tiles"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_theme_fade(tr::now), u"tristegram_theme_fade"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_splash(tr::now), u"tristegram_splash"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_blur(tr::now), u"tristegram_blur_previews"_q);
+		AddConfigToggle(group, tr::lng_tgs_v_templates(tr::now), u"tristegram_templates"_q);
 		// TRISTEGRAM_NEW_TOGGLES
 	}
 	AddNote(content, tr::lng_tgs_new_design_note(tr::now));

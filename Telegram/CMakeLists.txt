@@ -2000,6 +2000,10 @@ PRIVATE
     extera/tristegram_bar.cpp
     extera/tristegram_bar.h
     extera/tristegram_logo.cpp
+    extera/tristegram_motion.cpp
+    extera/tristegram_motion.h
+    extera/tristegram_templates.cpp
+    extera/tristegram_templates.h
     extera/tristegram_logo.h
     extera/tristegram_folders.cpp
     extera/tristegram_folders.h

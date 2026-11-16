@@ -1024,7 +1024,43 @@ void PaintRow(
 			PaintDialogDate(p, entry, fakeRow, date, rectForName, context);
 		}
 
-		paintItemCallback(nameleft, namewidth);
+		const auto hidePreview = Extera::Bool(u"tristegram_blur_previews"_q)
+			&& !context.active
+			&& !context.selected
+			&& (context.tristegramHover <= 0.)
+			&& !context.search;
+		if (hidePreview) {
+			// Tristegram: the last message stays frosted until hovered.
+			const auto ratio = style::DevicePixelRatio();
+			const auto area = QRect(
+				nameleft,
+				texttop,
+				std::max(namewidth, 1),
+				std::max(context.st->height - texttop, 1));
+			auto layer = QImage(
+				area.size() * ratio,
+				QImage::Format_ARGB32_Premultiplied);
+			layer.setDevicePixelRatio(ratio);
+			layer.fill(Qt::transparent);
+			{
+				auto q = Painter(&layer);
+				q.translate(-area.topLeft());
+				paintItemCallback(q, nameleft, namewidth);
+			}
+			const auto full = layer.size();
+			const auto small = QSize(
+				std::max(full.width() / 9, 1),
+				std::max(full.height() / 9, 1));
+			auto frosted = layer.scaled(
+				small,
+				Qt::IgnoreAspectRatio,
+				Qt::SmoothTransformation
+			).scaled(full, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+			frosted.setDevicePixelRatio(ratio);
+			p.drawImage(area.topLeft(), frosted);
+		} else {
+			paintItemCallback(p, nameleft, namewidth);
+		}
 	} else if (entry->isPinnedDialog(context.filter)
 		&& (context.filter || !entry->fixedOnTopIndex())) {
 		auto &icon = ThreeStateIcon(
@@ -1407,7 +1443,10 @@ void RowPainter::Paint(
 			? Flag::HiddenAuthor
 			: Flag(0))
 		| (row->topicJumpRipple() ? Flag::TopicJumpRipple : Flag(0));
-	const auto paintItemCallback = [&](int nameleft, int namewidth) {
+	const auto paintItemCallback = [&](
+			Painter &p,
+			int nameleft,
+			int namewidth) {
 		const auto texttop = context.st->textTop;
 		const auto availableWidth = PaintWideCounter(
 			p,
@@ -1553,7 +1592,10 @@ void RowPainter::Paint(
 		: BadgesState();
 	const auto displayPinnedIcon = false;
 
-	const auto paintItemCallback = [&](int nameleft, int namewidth) {
+	const auto paintItemCallback = [&](
+			Painter &p,
+			int nameleft,
+			int namewidth) {
 		const auto texttop = context.st->textTop;
 		const auto availableWidth = PaintWideCounter(
 			p,
