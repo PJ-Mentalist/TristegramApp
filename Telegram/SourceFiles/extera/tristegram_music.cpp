@@ -6,7 +6,9 @@ Telegram Desktop. Licensed under GNU GPL v3.
 
 #include "apiwrap.h"
 #include "api/api_common.h"
+#include "core/application.h"
 #include "core/file_utilities.h"
+#include "storage/localimageloader.h"
 #include "extera/tristegram_custom.h"
 #include "extera/tristegram_music_skins.h"
 #include "extera/tristegram_system_media.h"
@@ -997,7 +999,7 @@ void ChooseMusicFiles(
 		not_null<Window::SessionController*> controller,
 		const QString &playlist) {
 	FileDialog::GetOpenPaths(
-		controller->widget(),
+		Core::App().getFileDialogParent(),
 		tr::lng_tgm_upload_files(tr::now),
 		MusicFilter(),
 		crl::guard(controller, [=](FileDialog::OpenResult &&result) {
@@ -1008,7 +1010,7 @@ void ChooseMusicFiles(
 // A folder becomes a playlist with its name and its cover picture.
 void ChooseMusicFolder(not_null<Window::SessionController*> controller) {
 	FileDialog::GetFolder(
-		controller->widget(),
+		Core::App().getFileDialogParent(),
 		tr::lng_tgm_upload_album(tr::now),
 		QString(),
 		crl::guard(controller, [=](QString &&folder) {
@@ -1041,7 +1043,7 @@ void ChoosePlaylistCover(
 		not_null<Window::SessionController*> controller,
 		int index) {
 	FileDialog::GetOpenPath(
-		controller->widget(),
+		Core::App().getFileDialogParent(),
 		tr::lng_tgm_cover_choose(tr::now),
 		FileDialog::ImagesOrAllFilter(),
 		crl::guard(controller, [=](FileDialog::OpenResult &&result) {

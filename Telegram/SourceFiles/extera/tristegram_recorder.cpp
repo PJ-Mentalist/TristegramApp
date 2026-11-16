@@ -684,20 +684,7 @@ RecordButton::RecordButton(
 }
 
 void RecordButton::toggle() {
-	auto &recorder = Recorder::Instance();
-	if (recorder.recording()) {
-		const auto path = recorder.stop();
-		if (!path.isEmpty()) {
-			_controller->showToast(Ui::Toast::Config{
-				.text = { tr::lng_tgr_saved(tr::now) + u"\n"_q + path },
-				.duration = crl::time(4000),
-			});
-			File::ShowInFolder(path);
-		}
-	} else {
-		recorder.start(_controller->widget());
-		_controller->showToast(tr::lng_tgr_started(tr::now));
-	}
+	ToggleScreenRecording(_controller);
 }
 
 void RecordButton::paintEvent(QPaintEvent *e) {
@@ -751,6 +738,24 @@ object_ptr<Ui::RpWidget> CreateRecordButton(
 		QWidget *parent,
 		not_null<Window::SessionController*> controller) {
 	return object_ptr<RecordButton>(parent, controller);
+}
+
+void ToggleScreenRecording(
+		not_null<Window::SessionController*> controller) {
+	auto &recorder = Recorder::Instance();
+	if (recorder.recording()) {
+		const auto path = recorder.stop();
+		if (!path.isEmpty()) {
+			controller->showToast(Ui::Toast::Config{
+				.text = { tr::lng_tgr_saved(tr::now) + u"\n"_q + path },
+				.duration = crl::time(4000),
+			});
+			File::ShowInFolder(path);
+		}
+	} else {
+		recorder.start(controller->widget());
+		controller->showToast(tr::lng_tgr_started(tr::now));
+	}
 }
 
 void StopScreenRecording() {

@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/history_widget.h"
 
+#include "extera/tristegram_hotkeys.h"
+
 #include "extera/tristegram_templates.h"
 #include "ui/layers/generic_box.h"
 
@@ -2956,6 +2958,47 @@ void HistoryWidget::setupShortcuts() {
 				}
 				return false;
 			});
+		}
+		// Tristegram: quick actions with the newest messages.
+		if (_history) {
+			using Whose = Tristegram::Hotkeys::Whose;
+			const auto history = _history;
+			request->check(Command::TgDeleteLastMessage, 1)
+				&& request->handle([=] {
+					return Tristegram::Hotkeys::DeleteLastOwn(
+						controller(),
+						history);
+				});
+			request->check(Command::TgCopyLastMessage, 1)
+				&& request->handle([=] {
+					return Tristegram::Hotkeys::CopyLast(
+						controller(),
+						history);
+				});
+			request->check(Command::TgEditLastMessage, 1)
+				&& request->handle([=] {
+					const auto item = Tristegram::Hotkeys::LastMessage(
+						history,
+						Whose::Mine);
+					if (!item
+						|| (_history != history)
+						|| !item->allowsEdit(base::unixtime::now())) {
+						return false;
+					}
+					editMessage(item, {});
+					return true;
+				});
+			request->check(Command::TgReplyLastMessage, 1)
+				&& request->handle([=] {
+					const auto item = Tristegram::Hotkeys::LastMessage(
+						history,
+						Whose::Others);
+					if (!item || (_history != history) || !_canSendMessages) {
+						return false;
+					}
+					replyToMessage(item);
+					return true;
+				});
 		}
 		const auto channel = _peer ? _peer->asChannel() : nullptr;
 		const auto hasRecentActions = channel

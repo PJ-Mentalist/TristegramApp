@@ -90,6 +90,18 @@ enum class Command {
 
 	ShowAdminLog,
 
+	// Tristegram.
+	TgDeleteLastMessage,
+	TgEditLastMessage,
+	TgReplyLastMessage,
+	TgCopyLastMessage,
+	TgOpenMusic,
+	TgOpenSettings,
+	TgOpenDownloads,
+	TgToggleNightMode,
+	TgToggleHideMode,
+	TgScreenRecord,
+
 	SupportReloadTemplates,
 	SupportToggleMuted,
 	SupportScrollToCurrent,

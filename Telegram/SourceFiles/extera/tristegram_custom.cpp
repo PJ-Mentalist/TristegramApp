@@ -12,6 +12,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "ui/widgets/fields/input_field.h"
 #include "window/window_peer_menu.h"
 #include "styles/style_layers.h"
+#include "styles/style_widgets.h"
 #include "core/core_settings.h"
 #include "extera/extera_config.h"
 #include "data/data_wall_paper.h"

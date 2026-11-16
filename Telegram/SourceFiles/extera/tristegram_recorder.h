@@ -23,6 +23,10 @@ namespace Tristegram {
 	QWidget *parent,
 	not_null<Window::SessionController*> controller);
 
+// Starts recording the window or finishes and shows the file.
+void ToggleScreenRecording(
+	not_null<Window::SessionController*> controller);
+
 // Finishes the file if a recording is running, for example on quit.
 void StopScreenRecording();
 

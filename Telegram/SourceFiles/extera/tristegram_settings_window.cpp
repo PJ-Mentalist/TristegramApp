@@ -30,6 +30,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "settings/sections/settings_main.h"
 #include "settings/sections/settings_notifications.h"
 #include "settings/sections/settings_privacy_security.h"
+#include "settings/sections/settings_shortcuts.h"
 #include "ui/boxes/confirm_box.h"
 #include "ui/layers/generic_box.h"
 #include "ui/painter.h"
@@ -2176,6 +2177,7 @@ SettingsWindow::SettingsWindow(
 	native(tr::lng_tgs_n_privacy(tr::now), st::menuIconLock, QColor(0x5B, 0x6B, 0xE8), open(Settings::PrivacySecurityId()));
 	native(tr::lng_tgs_n_folders(tr::now), st::menuIconAddToFolder, QColor(0x2F, 0x8C, 0xF0), open(Settings::FoldersId()));
 	native(tr::lng_tgs_n_advanced(tr::now), st::menuIconManage, QColor(0x8E, 0x8E, 0x93), open(Settings::AdvancedId()));
+	native(tr::lng_tgk_title(tr::now), st::menuIconShortcut, QColor(0xFF, 0x9F, 0x0A), open(Settings::ShortcutsId()));
 	native(tr::lng_tgs_n_devices(tr::now), st::menuIconDevices, QColor(0x3C, 0xB3, 0x71), open(Settings::SessionsId()));
 	native(tr::lng_tgs_n_plugins(tr::now), st::exteraIconPlugins, QColor(0xE2, 0x55, 0x7B), open(Settings::ExteraPluginsId()), true);
 	native(tr::lng_tgs_n_features(tr::now), st::exteraIconMore, QColor(0xF0, 0x7A, 0x0C), open(Settings::ExteraId()));

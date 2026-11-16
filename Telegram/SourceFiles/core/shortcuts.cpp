@@ -146,6 +146,18 @@ const auto CommandByName = base::flat_map<QString, Command>{
 	{ u"archive_chat"_q                  , Command::ArchiveChat },
 	{ u"record_round"_q                  , Command::RecordRound },
 	{ u"show_admin_log"_q                , Command::ShowAdminLog },
+
+	// Tristegram.
+	{ u"tristegram_delete_last"_q        , Command::TgDeleteLastMessage },
+	{ u"tristegram_edit_last"_q          , Command::TgEditLastMessage },
+	{ u"tristegram_reply_last"_q         , Command::TgReplyLastMessage },
+	{ u"tristegram_copy_last"_q          , Command::TgCopyLastMessage },
+	{ u"tristegram_music"_q              , Command::TgOpenMusic },
+	{ u"tristegram_settings"_q           , Command::TgOpenSettings },
+	{ u"tristegram_downloads"_q          , Command::TgOpenDownloads },
+	{ u"tristegram_night_mode"_q         , Command::TgToggleNightMode },
+	{ u"tristegram_hide_mode"_q          , Command::TgToggleHideMode },
+	{ u"tristegram_screen_record"_q      , Command::TgScreenRecord },
 	//
 };
 
@@ -171,6 +183,11 @@ const base::flat_map<Command, QString> &CommandNames() {
 	Command::ShowScheduled,
 	Command::ArchiveChat,
 	Command::RecordRound,
+	Command::TgEditLastMessage,
+	Command::TgReplyLastMessage,
+	Command::TgCopyLastMessage,
+	Command::TgOpenDownloads,
+	Command::TgScreenRecord,
 };
 
 class Manager {
@@ -578,6 +595,13 @@ void Manager::fillDefaults() {
 
 	set(u"ctrl+9"_q                  , Command::ShowArchive);
 	set(u"ctrl+j"_q                  , Command::ShowContacts);
+
+	// Tristegram.
+	set(u"ctrl+shift+backspace"_q    , Command::TgDeleteLastMessage);
+	set(u"ctrl+alt+m"_q              , Command::TgOpenMusic);
+	set(u"ctrl+alt+s"_q              , Command::TgOpenSettings);
+	set(u"ctrl+alt+n"_q              , Command::TgToggleNightMode);
+	set(u"ctrl+alt+h"_q              , Command::TgToggleHideMode);
 
 	set(u"ctrl+r"_q                  , Command::ReadChat);
 
