@@ -52,6 +52,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPainterPath>
+#include <QtGui/QPolygonF>
 
 #include <algorithm>
 #include <cmath>
@@ -1099,6 +1100,140 @@ void FillThemes(
 	AddNote(content, tr::lng_tristegram_bubbles_about(tr::now));
 }
 
+// Vector icons for the animated wallpaper tiles: emoji glyphs look
+// different on every system and are missing on some.
+void PaintLiveKindIcon(QPainter &p, QRectF rect, int kind, QColor color) {
+	auto hq = PainterHighQualityEnabler(p);
+	const auto c = rect.center();
+	const auto s = rect.width() * 0.26; // half of the icon size
+	const auto stroke = std::max(rect.width() / 18., 1.5);
+	auto pen = QPen(color, stroke, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+	p.save();
+	switch (LiveWallpaperKind(kind)) {
+	case LiveWallpaperKind::None: {
+		p.setPen(pen);
+		p.setBrush(Qt::NoBrush);
+		p.drawEllipse(c, s * 0.9, s * 0.9);
+		p.drawLine(
+			QPointF(c.x() - s * 0.64, c.y() + s * 0.64),
+			QPointF(c.x() + s * 0.64, c.y() - s * 0.64));
+	} break;
+	case LiveWallpaperKind::Doves: {
+		// A bird with raised wings and a small tail.
+		auto path = QPainterPath();
+		path.moveTo(c.x() - s, c.y() - s * 0.35);
+		path.cubicTo(
+			c.x() - s * 0.6, c.y() - s * 0.75,
+			c.x() - s * 0.2, c.y() - s * 0.45,
+			c.x(), c.y() + s * 0.05);
+		path.cubicTo(
+			c.x() + s * 0.2, c.y() - s * 0.45,
+			c.x() + s * 0.6, c.y() - s * 0.75,
+			c.x() + s, c.y() - s * 0.35);
+		path.cubicTo(
+			c.x() + s * 0.55, c.y() - s * 0.2,
+			c.x() + s * 0.3, c.y() + s * 0.2,
+			c.x() + s * 0.12, c.y() + s * 0.45);
+		path.lineTo(c.x() + s * 0.32, c.y() + s * 0.85);
+		path.lineTo(c.x(), c.y() + s * 0.62);
+		path.lineTo(c.x() - s * 0.32, c.y() + s * 0.85);
+		path.lineTo(c.x() - s * 0.12, c.y() + s * 0.45);
+		path.cubicTo(
+			c.x() - s * 0.3, c.y() + s * 0.2,
+			c.x() - s * 0.55, c.y() - s * 0.2,
+			c.x() - s, c.y() - s * 0.35);
+		p.setPen(Qt::NoPen);
+		p.setBrush(color);
+		p.drawPath(path);
+	} break;
+	case LiveWallpaperKind::Stars: {
+		const auto sparkle = [&](QPointF at, double r) {
+			auto path = QPainterPath();
+			path.moveTo(at.x(), at.y() - r);
+			path.quadTo(at, QPointF(at.x() + r, at.y()));
+			path.quadTo(at, QPointF(at.x(), at.y() + r));
+			path.quadTo(at, QPointF(at.x() - r, at.y()));
+			path.quadTo(at, QPointF(at.x(), at.y() - r));
+			p.drawPath(path);
+		};
+		p.setPen(Qt::NoPen);
+		p.setBrush(color);
+		sparkle(QPointF(c.x() - s * 0.2, c.y() + s * 0.15), s * 0.85);
+		sparkle(QPointF(c.x() + s * 0.65, c.y() - s * 0.6), s * 0.38);
+		sparkle(QPointF(c.x() + s * 0.7, c.y() + s * 0.7), s * 0.22);
+	} break;
+	case LiveWallpaperKind::Bubbles: {
+		p.setPen(pen);
+		p.setBrush(Qt::NoBrush);
+		const auto bubble = [&](QPointF at, double r) {
+			p.setPen(pen);
+			p.drawEllipse(at, r, r);
+			p.setPen(QPen(color, stroke * 0.8, Qt::SolidLine, Qt::RoundCap));
+			p.drawArc(
+				QRectF(at.x() - r * 0.6, at.y() - r * 0.6, r * 1.2, r * 1.2),
+				100 * 16,
+				60 * 16);
+		};
+		bubble(QPointF(c.x() - s * 0.3, c.y() + s * 0.25), s * 0.62);
+		bubble(QPointF(c.x() + s * 0.55, c.y() - s * 0.45), s * 0.36);
+		bubble(QPointF(c.x() + s * 0.6, c.y() + s * 0.65), s * 0.2);
+	} break;
+	case LiveWallpaperKind::Code: {
+		p.setPen(pen);
+		p.setBrush(Qt::NoBrush);
+		const auto h = s * 0.55;
+		p.drawPolyline(QPolygonF{
+			QPointF(c.x() - s * 0.45, c.y() - h),
+			QPointF(c.x() - s, c.y()),
+			QPointF(c.x() - s * 0.45, c.y() + h),
+		});
+		p.drawPolyline(QPolygonF{
+			QPointF(c.x() + s * 0.45, c.y() - h),
+			QPointF(c.x() + s, c.y()),
+			QPointF(c.x() + s * 0.45, c.y() + h),
+		});
+		p.drawLine(
+			QPointF(c.x() + s * 0.2, c.y() - s * 0.75),
+			QPointF(c.x() - s * 0.2, c.y() + s * 0.75));
+	} break;
+	case LiveWallpaperKind::Aurora: {
+		p.setBrush(Qt::NoBrush);
+		for (auto i = 0; i != 3; ++i) {
+			const auto y = c.y() - s * 0.55 + i * s * 0.55;
+			auto path = QPainterPath();
+			path.moveTo(c.x() - s, y);
+			path.cubicTo(
+				c.x() - s * 0.45, y - s * 0.45,
+				c.x() + s * 0.05, y + s * 0.4,
+				c.x() + s, y - s * 0.15);
+			auto faded = color;
+			faded.setAlphaF(color.alphaF() * (1. - i * 0.25));
+			p.setPen(QPen(faded, stroke, Qt::SolidLine, Qt::RoundCap));
+			p.drawPath(path);
+		}
+	} break;
+	case LiveWallpaperKind::Video: {
+		p.setPen(pen);
+		p.setBrush(Qt::NoBrush);
+		const auto frame = QRectF(
+			c.x() - s,
+			c.y() - s * 0.72,
+			s * 2,
+			s * 1.44);
+		p.drawRoundedRect(frame, s * 0.3, s * 0.3);
+		auto play = QPainterPath();
+		play.moveTo(c.x() - s * 0.25, c.y() - s * 0.38);
+		play.lineTo(c.x() + s * 0.42, c.y());
+		play.lineTo(c.x() - s * 0.25, c.y() + s * 0.38);
+		play.closeSubpath();
+		p.setPen(Qt::NoPen);
+		p.setBrush(color);
+		p.drawPath(play);
+	} break;
+	}
+	p.restore();
+}
+
 void FillBackground(
 		not_null<Ui::VerticalLayout*> content,
 		not_null<Window::SessionController*> controller) {
@@ -1205,15 +1340,6 @@ void FillBackground(
 			tr::lng_tgl_aurora(tr::now),
 			tr::lng_tgl_own(tr::now),
 		};
-		const auto glyphs = std::vector<QString>{
-			u"✕"_q,
-			u"🕊"_q,
-			u"✨"_q,
-			u"🫧"_q,
-			u"</>"_q,
-			u"🌌"_q,
-			u"▶"_q,
-		};
 		AddTiles(inner, {
 			.count = int(names.size()),
 			.name = [=](int index) { return names[index]; },
@@ -1225,11 +1351,11 @@ void FillBackground(
 				p.setPen(Qt::NoPen);
 				p.setBrush(fill);
 				p.drawEllipse(rect);
-				auto font = QFont(st::semiboldFont->f);
-				font.setPixelSize(rect.height() * 2 / 5);
-				p.setFont(font);
-				p.setPen(index ? QColor(255, 255, 255) : st::windowSubTextFg->c);
-				p.drawText(rect, Qt::AlignCenter, glyphs[index]);
+				PaintLiveKindIcon(
+					p,
+					QRectF(rect),
+					index,
+					index ? QColor(255, 255, 255) : st::windowSubTextFg->c);
 			},
 			.selected = [] {
 				return std::clamp(Extera::Int(u"tristegram_live_kind"_q), 0, 6);

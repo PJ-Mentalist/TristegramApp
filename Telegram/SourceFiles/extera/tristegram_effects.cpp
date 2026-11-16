@@ -84,6 +84,7 @@ class Overlay final : public Ui::RpWidget {
 public:
 	explicit Overlay(QWidget *window);
 
+	void place();
 	void burst(QPointF local, Kind kind, int amount, double scale);
 	void ring(QPointF local);
 
@@ -102,17 +103,32 @@ private:
 Overlay::Overlay(QWidget *window)
 : RpWidget(window)
 , _animation([=] { tick(); }) {
+	// A separate see-through window over the main one: as a child it was
+	// covered by the parts of the window that are drawn natively.
+	setWindowFlags(Qt::Tool
+		| Qt::FramelessWindowHint
+		| Qt::NoDropShadowWindowHint
+		| Qt::WindowTransparentForInput
+		| Qt::WindowDoesNotAcceptFocus);
 	setAttribute(Qt::WA_TransparentForMouseEvents);
 	setAttribute(Qt::WA_NoSystemBackground);
 	setAttribute(Qt::WA_TranslucentBackground);
-	resize(window->size());
-	base::install_event_filter(this, window, [=](not_null<QEvent*> e) {
-		if (e->type() == QEvent::Resize) {
-			resize(parentWidget()->size());
-		}
-		return base::EventFilterResult::Continue;
-	});
+	setAttribute(Qt::WA_ShowWithoutActivating);
+	place();
 	hide();
+}
+
+void Overlay::place() {
+	const auto window = parentWidget();
+	if (!window) {
+		return;
+	}
+	const auto geometry = QRect(
+		window->mapToGlobal(QPoint()),
+		window->size());
+	if (geometry != this->geometry()) {
+		setGeometry(geometry);
+	}
 }
 
 void Overlay::burst(QPointF local, Kind kind, int amount, double scale) {
@@ -166,7 +182,9 @@ void Overlay::burst(QPointF local, Kind kind, int amount, double scale) {
 			_particles.begin(),
 			_particles.begin() + (_particles.size() - 600));
 	}
-	show();
+	if (isHidden()) {
+		show();
+	}
 	raise();
 	if (!_animation.animating()) {
 		_animation.start();
@@ -181,7 +199,9 @@ void Overlay::ring(QPointF local) {
 		.born = crl::now(),
 		.radius = double(style::ConvertScale(26)),
 	});
-	show();
+	if (isHidden()) {
+		show();
+	}
 	raise();
 	if (!_animation.animating()) {
 		_animation.start();
@@ -278,6 +298,7 @@ void Overlay::paintEvent(QPaintEvent *e) {
 [[nodiscard]] bool Suitable(QWidget *window) {
 	return window
 		&& window->isWindow()
+		&& !window->property("tristegramEffects").toBool()
 		&& !qobject_cast<QMenu*>(window)
 		&& !(window->windowFlags() & Qt::Popup)
 		&& !(window->windowFlags() & Qt::ToolTip)
@@ -298,6 +319,7 @@ void OnClick(QWidget *target, QPoint global) {
 		return;
 	}
 	const auto overlay = OverlayFor(window);
+	overlay->place();
 	const auto local = QPointF(overlay->mapFromGlobal(global));
 	switch (kind) {
 	case Kind::Ring: overlay->ring(local); break;
@@ -321,6 +343,7 @@ void OnType(QWidget *focused) {
 	const auto caret = edit->cursorRect();
 	const auto global = edit->viewport()->mapToGlobal(caret.center());
 	const auto overlay = OverlayFor(window);
+	overlay->place();
 	const auto local = QPointF(overlay->mapFromGlobal(global));
 	switch (kind) {
 	case 1: overlay->burst(local, Kind::Sparks, 5, 0.7); break;

@@ -266,7 +266,7 @@ index e2ba0d6..13f039b 100644
  rankAdminFg: #49a355; // admin badge text and pill, green
  rankOwnerFg: #956ac8; // owner badge text and pill, purple
 diff --git a/ui/layers/layer_widget.cpp b/ui/layers/layer_widget.cpp
-index f8b1aa6..980d083 100644
+index f8b1aa6..02faeb9 100644
 --- a/ui/layers/layer_widget.cpp
 +++ b/ui/layers/layer_widget.cpp
 @@ -5,6 +5,7 @@
@@ -307,16 +307,24 @@ index f8b1aa6..980d083 100644
  
  	if (_mainMenuCache.isNull() && mainMenuRight > 0) {
  		// All cache images are taken together with their shadows,
-@@ -547,6 +557,26 @@ void LayerStackWidget::setStyleOverrides(
+@@ -547,6 +557,34 @@ void LayerStackWidget::setStyleOverrides(
  }
  
  void LayerStackWidget::setCacheImages() {
 +	if (PopupMenu::GlassEnabled()
 +		&& (currentLayer() || _specialLayer || _mainMenu)
 +		&& parentWidget()) {
-+		hideChildren();
-+		auto image = Ui::GrabWidget(parentWidget()).toImage();
-+		showChildren();
++		// Tristegram: the picture comes from the screen, not from painting
++		// the whole window again, and nothing is hidden or shown for it.
++		const auto parent = parentWidget();
++		const auto global = QRect(
++			parent->mapToGlobal(QPoint()),
++			parent->size());
++		auto grabbed = QRect();
++		auto image = PopupMenu::GrabScreen(global, &grabbed);
++		if (grabbed != global) {
++			image = QImage();
++		}
 +		if (!image.isNull()) {
 +			const auto full = image.size();
 +			auto small = image.scaled(
@@ -1003,19 +1011,32 @@ index 981d609..ab5640a 100644
  			_padding.left(),
  			_padding.top(),
 diff --git a/ui/widgets/popup_menu.cpp b/ui/widgets/popup_menu.cpp
-index 8a2ffc7..a9071dd 100644
+index 8a2ffc7..5497491 100644
 --- a/ui/widgets/popup_menu.cpp
 +++ b/ui/widgets/popup_menu.cpp
-@@ -6,6 +6,8 @@
+@@ -6,6 +6,12 @@
  //
  #include "ui/widgets/popup_menu.h"
  
 +#include <QtGui/QPainterPath>
++#include <QtGui/QGuiApplication>
++#include <QtGui/QScreen>
++
++#include <cmath>
 +
  #include "base/platform/base_platform_info.h"
  #include "base/invoke_queued.h"
  #include "base/weak_qptr.h"
-@@ -104,10 +106,19 @@ struct PopupMenu::SubmenuAim {
+@@ -26,6 +32,8 @@
+ #include <QtGui/QCursor>
+ #include <QtGui/QPainter>
+ #include <QtGui/QScreen>
++
++#include <cmath>
+ #include <QtGui/QWindow>
+ #include <QtWidgets/QApplication>
+ 
+@@ -104,10 +112,19 @@ struct PopupMenu::SubmenuAim {
  	bool aiming = false;
  };
  
@@ -1036,7 +1057,7 @@ index 8a2ffc7..a9071dd 100644
  , _boxShadow(_st.shadow)
  , _scroll(this, st::defaultMultiSelect.scroll)
  , _menu(_scroll->setOwnedWidget(
-@@ -121,7 +132,7 @@ PopupMenu::PopupMenu(QWidget *parent, const style::PopupMenu &st)
+@@ -121,7 +138,7 @@ PopupMenu::PopupMenu(QWidget *parent, const style::PopupMenu &st)
  PopupMenu::PopupMenu(QWidget *parent, QMenu *menu, const style::PopupMenu &st)
  : RpWidget(parent)
  , _st(st)
@@ -1045,7 +1066,7 @@ index 8a2ffc7..a9071dd 100644
  , _boxShadow(_st.shadow)
  , _scroll(this, st::defaultMultiSelect.scroll)
  , _menu(_scroll->setOwnedWidget(
-@@ -172,6 +183,91 @@ void PopupMenu::init() {
+@@ -172,6 +189,117 @@ void PopupMenu::init() {
  		setAttribute(Qt::WA_TranslucentBackground, false);
  		setAttribute(Qt::WA_OpaquePaintEvent, true);
  	}
@@ -1064,6 +1085,38 @@ index 8a2ffc7..a9071dd 100644
 +
 +bool PopupMenu::GlassEnabled() {
 +	return GlassMenus;
++}
++
++QImage PopupMenu::GrabScreen(QRect global, QRect *grabbed) {
++	// Tristegram: taking the picture from the screen keeps us away from
++	// rendering every widget of the window again, which some of them
++	// do not survive.
++	const auto screen = QGuiApplication::screenAt(global.center());
++	if (!screen) {
++		return QImage();
++	}
++	const auto geometry = screen->geometry();
++	const auto part = global.intersected(geometry);
++	if (part.width() < 8 || part.height() < 8) {
++		return QImage();
++	}
++	auto image = screen->grabWindow(
++		0,
++		part.x() - geometry.x(),
++		part.y() - geometry.y(),
++		part.width(),
++		part.height()).toImage();
++	if (image.isNull()) {
++		return QImage();
++	}
++	if (image.width() != part.width()
++		&& std::abs(image.devicePixelRatio() - 1.) < 0.01) {
++		image.setDevicePixelRatio(image.width() / double(part.width()));
++	}
++	if (grabbed) {
++		*grabbed = part;
++	}
++	return image;
 +}
 +
 +void PopupMenu::setupGlass() {
@@ -1107,14 +1160,8 @@ index 8a2ffc7..a9071dd 100644
 +		return;
 +	}
 +	const auto global = QRect(mapToGlobal(_inner.topLeft()), _inner.size());
-+	const auto local = QRect(
-+		window->mapFromGlobal(global.topLeft()),
-+		global.size());
-+	const auto part = local.intersected(window->rect());
-+	if (part.width() < 8 || part.height() < 8) {
-+		return;
-+	}
-+	auto image = window->grab(part).toImage();
++	auto grabbed = QRect();
++	auto image = GrabScreen(global, &grabbed);
 +	if (image.isNull()) {
 +		return;
 +	}
@@ -1132,12 +1179,12 @@ index 8a2ffc7..a9071dd 100644
 +		Qt::IgnoreAspectRatio,
 +		Qt::SmoothTransformation);
 +	_glassBackdrop.setDevicePixelRatio(ratio);
-+	_glassOffset = part.topLeft() - local.topLeft();
++	_glassOffset = grabbed.topLeft() - global.topLeft();
 +	_glassBg->update();
  }
  
  not_null<PopupMenu*> PopupMenu::ensureSubmenu(
-@@ -265,9 +361,31 @@ void PopupMenu::updateRoundingOverlay() {
+@@ -265,9 +393,31 @@ void PopupMenu::updateRoundingOverlay() {
  		auto hq = PainterHighQualityEnabler(p);
  		p.setCompositionMode(QPainter::CompositionMode_DestinationIn);
  		_roundRect.paint(p, _inner, RectPart::AllCorners);
@@ -1170,7 +1217,7 @@ index 8a2ffc7..a9071dd 100644
  		}
  	}, _roundingOverlay->lifetime());
  
-@@ -898,9 +1016,9 @@ void PopupMenu::prepareShowAnimation() {
+@@ -898,9 +1048,9 @@ void PopupMenu::prepareShowAnimation() {
  
  	const auto pixelRatio = style::DevicePixelRatio();
  	_showAnimation = std::make_unique<PanelAnimation>(_st.animation, _origin);
@@ -1182,7 +1229,7 @@ index 8a2ffc7..a9071dd 100644
  	} else {
  		_showAnimation->setSkipShadow(true);
  	}
-@@ -1208,6 +1326,7 @@ bool PopupMenu::prepareGeometryFor(
+@@ -1208,6 +1358,7 @@ bool PopupMenu::prepareGeometryFor(
  }
  
  void PopupMenu::showPrepared(TriggeredSource source) {
@@ -1191,10 +1238,10 @@ index 8a2ffc7..a9071dd 100644
  
  	if (::Platform::IsWindows()) {
 diff --git a/ui/widgets/popup_menu.h b/ui/widgets/popup_menu.h
-index 3d1a0e0..22bd7cb 100644
+index 3d1a0e0..b7c9b0f 100644
 --- a/ui/widgets/popup_menu.h
 +++ b/ui/widgets/popup_menu.h
-@@ -27,6 +27,10 @@ class ScrollArea;
+@@ -27,6 +27,15 @@ class ScrollArea;
  
  class PopupMenu : public RpWidget {
  public:
@@ -1202,10 +1249,15 @@ index 3d1a0e0..22bd7cb 100644
 +	static void SetGlassEnabled(bool enabled);
 +	[[nodiscard]] static bool GlassEnabled();
 +
++	// What the screen shows in the given global rect, without asking any
++	// widget to paint again. Returns the grabbed part of the rect in
++	// *grabbed, or an empty image.
++	[[nodiscard]] static QImage GrabScreen(QRect global, QRect *grabbed);
++
  	enum class VerticalOrigin {
  		Top,
  		Bottom,
-@@ -222,6 +226,8 @@ private:
+@@ -222,6 +231,8 @@ private:
  		QWidget *parentActionWidget);
  	void showPrepared(TriggeredSource source);
  	void updateRoundingOverlay();
@@ -1214,7 +1266,7 @@ index 3d1a0e0..22bd7cb 100644
  
  	const style::PopupMenu &_st;
  
-@@ -230,6 +236,9 @@ private:
+@@ -230,6 +241,9 @@ private:
  	object_ptr<ScrollArea> _scroll;
  	not_null<Menu::Menu*> _menu;
  	object_ptr<RpWidget> _roundingOverlay = { nullptr };
