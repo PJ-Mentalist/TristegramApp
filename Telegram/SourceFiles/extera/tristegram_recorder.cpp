@@ -7,6 +7,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "base/timer.h"
 #include "core/file_utilities.h"
 #include "extera/extera_config.h"
+#include "extera/tristegram_audio_capture.h"
 #include "extera/tristegram_logo.h"
 #include "ffmpeg/ffmpeg_utility.h"
 #include "lang/lang_keys.h"
@@ -44,14 +45,22 @@ public:
 	explicit Encoder(crl::weak_on_queue<Encoder> weak);
 	~Encoder();
 
-	void setup(QString path, int fps);
+	void setup(QString path, int fps, bool video, bool audio);
 
 	void push(QImage frame, crl::time timestamp);
+	void pushAudio(std::vector<float> samples);
 	void finish();
 
 private:
 	bool init(QSize size);
+	bool initVideo(QSize size);
+	bool initAudio();
+	void encodeAudio();
 	bool write(const FramePointer &frame);
+	bool writeFrame(
+		const FramePointer &frame,
+		const CodecPointer &codec,
+		AVStream *stream);
 	void close();
 
 #if DA_FFMPEG_CONST_WRITE_CALLBACK
@@ -74,14 +83,24 @@ private:
 	bool _failed = false;
 	bool _finished = false;
 
+	bool _withVideo = true;
+	bool _withAudio = false;
+	CodecPointer _audioCodec;
+	AVStream *_audioStream = nullptr;
+	FramePointer _audioFrame;
+	std::vector<float> _audioTail;
+	int64 _audioPts = 0;
+
 };
 
 Encoder::Encoder(crl::weak_on_queue<Encoder>) {
 }
 
-void Encoder::setup(QString path, int fps) {
+void Encoder::setup(QString path, int fps, bool video, bool audio) {
 	_file.setFileName(path);
 	_fps = fps;
+	_withVideo = video;
+	_withAudio = audio;
 }
 
 Encoder::~Encoder() {
@@ -127,6 +146,82 @@ bool Encoder::init(QSize size) {
 	if (!_format) {
 		return false;
 	}
+	if (_withVideo && !initVideo(size)) {
+		return false;
+	}
+	if (_withAudio && !initAudio()) {
+		// The picture is still worth saving without the sound.
+		_withAudio = false;
+		_audioCodec = nullptr;
+		_audioFrame = nullptr;
+		if (!_withVideo) {
+			return false;
+		}
+	}
+	const auto error = AvErrorWrap(avformat_write_header(
+		_format.get(),
+		nullptr));
+	if (error) {
+		LogError(u"avformat_write_header"_q, error);
+		return false;
+	}
+	return true;
+}
+
+bool Encoder::initAudio() {
+	const auto codec = avcodec_find_encoder(AV_CODEC_ID_AAC);
+	if (!codec) {
+		LogError(u"avcodec_find_encoder"_q, u"AAC"_q);
+		return false;
+	}
+	_audioStream = avformat_new_stream(_format.get(), codec);
+	_audioCodec = CodecPointer(avcodec_alloc_context3(codec));
+	if (!_audioStream || !_audioCodec) {
+		return false;
+	}
+	_audioCodec->sample_fmt = AV_SAMPLE_FMT_FLTP;
+	_audioCodec->bit_rate = 192'000;
+	_audioCodec->sample_rate = AudioCapture::kFrequency;
+	_audioCodec->ch_layout = AV_CHANNEL_LAYOUT_STEREO;
+	_audioCodec->time_base = AVRational{ 1, AudioCapture::kFrequency };
+	if (_format->oformat->flags & AVFMT_GLOBALHEADER) {
+		_audioCodec->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
+	}
+	auto error = AvErrorWrap(avcodec_open2(
+		_audioCodec.get(),
+		codec,
+		nullptr));
+	if (error) {
+		LogError(u"avcodec_open2"_q, error);
+		return false;
+	}
+	error = AvErrorWrap(avcodec_parameters_from_context(
+		_audioStream->codecpar,
+		_audioCodec.get()));
+	if (error) {
+		LogError(u"avcodec_parameters_from_context"_q, error);
+		return false;
+	}
+	_audioStream->time_base = _audioCodec->time_base;
+	_audioFrame = MakeFramePointer();
+	if (!_audioFrame) {
+		return false;
+	}
+	_audioFrame->nb_samples = (_audioCodec->frame_size > 0)
+		? _audioCodec->frame_size
+		: 1024;
+	_audioFrame->format = _audioCodec->sample_fmt;
+	_audioFrame->sample_rate = _audioCodec->sample_rate;
+	av_channel_layout_copy(&_audioFrame->ch_layout, &_audioCodec->ch_layout);
+	error = AvErrorWrap(av_frame_get_buffer(_audioFrame.get(), 0));
+	if (error) {
+		LogError(u"av_frame_get_buffer"_q, error);
+		return false;
+	}
+	return true;
+}
+
+bool Encoder::initVideo(QSize size) {
 	auto codec = avcodec_find_encoder_by_name("libopenh264");
 	if (!codec) {
 		codec = avcodec_find_encoder(AV_CODEC_ID_H264);
@@ -182,12 +277,66 @@ bool Encoder::init(QSize size) {
 		LogError(u"av_frame_get_buffer"_q, error);
 		return false;
 	}
-	error = AvErrorWrap(avformat_write_header(_format.get(), nullptr));
-	if (error) {
-		LogError(u"avformat_write_header"_q, error);
-		return false;
-	}
 	return true;
+}
+
+void Encoder::pushAudio(std::vector<float> samples) {
+	if (_failed || _finished || !_withAudio || samples.empty()) {
+		return;
+	}
+	_audioTail.insert(_audioTail.end(), samples.begin(), samples.end());
+	if (!_format) {
+		if (_withVideo) {
+			// Waiting for the first picture to know the size.
+			const auto limit = size_t(AudioCapture::kFrequency)
+				* AudioCapture::kChannels
+				* 2;
+			if (_audioTail.size() > limit) {
+				_audioTail.erase(
+					_audioTail.begin(),
+					_audioTail.end() - limit);
+			}
+			return;
+		} else if (!init(QSize())) {
+			_failed = true;
+			close();
+			return;
+		}
+	}
+	encodeAudio();
+}
+
+void Encoder::encodeAudio() {
+	if (!_audioCodec || !_audioFrame || _failed) {
+		return;
+	}
+	const auto frameSize = _audioFrame->nb_samples;
+	const auto per = size_t(frameSize) * AudioCapture::kChannels;
+	auto offset = size_t(0);
+	while (_audioTail.size() - offset >= per) {
+		const auto error = AvErrorWrap(
+			av_frame_make_writable(_audioFrame.get()));
+		if (error) {
+			_failed = true;
+			return;
+		}
+		const auto left = reinterpret_cast<float*>(_audioFrame->data[0]);
+		const auto right = reinterpret_cast<float*>(_audioFrame->data[1]);
+		for (auto i = 0; i != frameSize; ++i) {
+			left[i] = _audioTail[offset + i * 2];
+			right[i] = _audioTail[offset + i * 2 + 1];
+		}
+		_audioFrame->pts = _audioPts;
+		_audioPts += frameSize;
+		if (!writeFrame(_audioFrame, _audioCodec, _audioStream)) {
+			_failed = true;
+			return;
+		}
+		offset += per;
+	}
+	_audioTail.erase(
+		_audioTail.begin(),
+		_audioTail.begin() + std::ptrdiff_t(offset));
 }
 
 void Encoder::push(QImage frame, crl::time timestamp) {
@@ -247,7 +396,17 @@ void Encoder::push(QImage frame, crl::time timestamp) {
 }
 
 bool Encoder::write(const FramePointer &frame) {
-	auto error = AvErrorWrap(avcodec_send_frame(_codec.get(), frame.get()));
+	return writeFrame(frame, _codec, _stream);
+}
+
+bool Encoder::writeFrame(
+		const FramePointer &frame,
+		const CodecPointer &codec,
+		AVStream *stream) {
+	if (!codec || !stream) {
+		return true;
+	}
+	auto error = AvErrorWrap(avcodec_send_frame(codec.get(), frame.get()));
 	if (error) {
 		LogError(u"avcodec_send_frame"_q, error);
 		return false;
@@ -255,15 +414,15 @@ bool Encoder::write(const FramePointer &frame) {
 	auto packet = av_packet_alloc();
 	const auto guard = gsl::finally([&] { av_packet_free(&packet); });
 	while (true) {
-		error = AvErrorWrap(avcodec_receive_packet(_codec.get(), packet));
+		error = AvErrorWrap(avcodec_receive_packet(codec.get(), packet));
 		if (error.code() == AVERROR(EAGAIN) || error.code() == AVERROR_EOF) {
 			return true;
 		} else if (error) {
 			LogError(u"avcodec_receive_packet"_q, error);
 			return false;
 		}
-		packet->stream_index = _stream->index;
-		av_packet_rescale_ts(packet, _codec->time_base, _stream->time_base);
+		packet->stream_index = stream->index;
+		av_packet_rescale_ts(packet, codec->time_base, stream->time_base);
 		error = AvErrorWrap(av_interleaved_write_frame(_format.get(), packet));
 		if (error) {
 			LogError(u"av_interleaved_write_frame"_q, error);
@@ -277,8 +436,12 @@ void Encoder::finish() {
 		return;
 	}
 	_finished = true;
-	if (_format && _codec && !_failed) {
-		if (write(nullptr)) {
+	if (_format && (_codec || _audioCodec) && !_failed) {
+		encodeAudio();
+		const auto video = !_codec || write(nullptr);
+		const auto audio = !_audioCodec
+			|| writeFrame(nullptr, _audioCodec, _audioStream);
+		if (video && audio) {
 			const auto error = AvErrorWrap(av_write_trailer(_format.get()));
 			if (error) {
 				LogError(u"av_write_trailer"_q, error);
@@ -292,6 +455,8 @@ void Encoder::close() {
 	_sws = nullptr;
 	_frame = nullptr;
 	_codec = nullptr;
+	_audioFrame = nullptr;
+	_audioCodec = nullptr;
 	_format = nullptr;
 	if (_file.isOpen()) {
 		_file.close();
@@ -328,26 +493,43 @@ public:
 		return _started;
 	}
 
-	void start(not_null<QWidget*> window) {
+	[[nodiscard]] bool audioOnly() const {
+		return recording() && _audioOnly;
+	}
+
+	// A window to film, or nothing for the sound alone (voice chats).
+	void start(QWidget *window) {
 		if (recording()) {
 			return;
 		}
-		_window = window.get();
+		_window = window;
+		_audioOnly = !window;
 		const auto fps = std::clamp(
 			Extera::Int(u"tristegram_record_fps"_q),
 			10,
 			60);
 		const auto stamp = QDateTime::currentDateTime().toString(
 			u"yyyy-MM-dd_HH-mm-ss"_q);
-		_path = RecordingsFolder() + u"/Tristegram_"_q + stamp + u".mp4"_q;
+		const auto sound = _audioOnly
+			|| Extera::Bool(u"tristegram_record_sound"_q);
+		const auto microphone = Extera::Bool(u"tristegram_record_mic"_q);
+		_capture = (AudioCapture::Supported() && (sound || microphone))
+			? std::make_unique<AudioCapture::Capture>(sound, microphone)
+			: nullptr;
+		const auto audio = (_capture != nullptr);
+		_path = RecordingsFolder()
+			+ (_audioOnly ? u"/Tristegram_voice_"_q : u"/Tristegram_"_q)
+			+ stamp
+			+ (_audioOnly ? u".m4a"_q : u".mp4"_q);
 		_encoder = std::make_unique<crl::object_on_queue<Encoder>>();
-		_encoder->with([path = _path, fps](Encoder &encoder) {
-			encoder.setup(path, fps);
+		const auto video = !_audioOnly;
+		_encoder->with([path = _path, fps, video, audio](Encoder &encoder) {
+			encoder.setup(path, fps, video, audio);
 		});
 		_pending = std::make_shared<std::atomic<int>>(0);
 		_started = crl::now();
 		_recording = true;
-		_timer.callEach(1000 / fps);
+		_timer.callEach(_audioOnly ? 100 : (1000 / fps));
 		capture();
 	}
 
@@ -356,6 +538,8 @@ public:
 			return QString();
 		}
 		_timer.cancel();
+		pushAudio();
+		_capture = nullptr;
 		_recording = false;
 		if (_encoder) {
 			_encoder->with([](Encoder &encoder) {
@@ -370,7 +554,29 @@ private:
 	Recorder() : _timer([=] { capture(); }) {
 	}
 
+	void pushAudio() {
+		if (!_capture || !_encoder) {
+			return;
+		}
+		auto samples = _capture->take();
+		if (samples.empty()) {
+			return;
+		}
+		_encoder->with([samples = std::move(samples)](
+				Encoder &encoder) mutable {
+			encoder.pushAudio(std::move(samples));
+		});
+	}
+
 	void capture() {
+		// The sound goes on even while the window is hidden.
+		pushAudio();
+		if (_audioOnly) {
+			if (!_encoder) {
+				stop();
+			}
+			return;
+		}
 		const auto window = _window.data();
 		if (!window || !_encoder) {
 			stop();
@@ -428,6 +634,8 @@ private:
 	}
 
 	QPointer<QWidget> _window;
+	bool _audioOnly = false;
+	std::unique_ptr<AudioCapture::Capture> _capture;
 	QString _path;
 	std::unique_ptr<crl::object_on_queue<Encoder>> _encoder;
 	std::shared_ptr<std::atomic<int>> _pending;
@@ -547,6 +755,29 @@ object_ptr<Ui::RpWidget> CreateRecordButton(
 
 void StopScreenRecording() {
 	Recorder::Instance().stop();
+}
+
+bool AudioRecording() {
+	return Recorder::Instance().audioOnly();
+}
+
+bool StartAudioRecording() {
+	auto &recorder = Recorder::Instance();
+	if (recorder.recording() || !AudioCapture::Supported()) {
+		return false;
+	}
+	recorder.start(nullptr);
+	return true;
+}
+
+QString StopAudioRecording() {
+	auto &recorder = Recorder::Instance();
+	return recorder.audioOnly() ? recorder.stop() : QString();
+}
+
+crl::time AudioRecordingStarted() {
+	auto &recorder = Recorder::Instance();
+	return recorder.audioOnly() ? recorder.started() : 0;
 }
 
 } // namespace Tristegram

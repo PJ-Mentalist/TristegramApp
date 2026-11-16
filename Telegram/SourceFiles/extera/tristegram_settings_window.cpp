@@ -1862,6 +1862,19 @@ void FillEco(not_null<Ui::VerticalLayout*> content) {
 			});
 	}
 	AddNote(content, tr::lng_tgr_note(tr::now));
+	AddLabel(content, tr::lng_tgr_sound_title(tr::now));
+	{
+		const auto group = AddGroup(content);
+		AddConfigToggle(
+			group,
+			tr::lng_tgr_sound(tr::now),
+			u"tristegram_record_sound"_q);
+		AddConfigToggle(
+			group,
+			tr::lng_tgr_mic(tr::now),
+			u"tristegram_record_mic"_q);
+	}
+	AddNote(content, tr::lng_tgr_sound_note(tr::now));
 }
 
 void FillAccounts(

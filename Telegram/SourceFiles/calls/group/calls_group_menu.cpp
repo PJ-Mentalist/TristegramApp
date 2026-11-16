@@ -11,6 +11,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "calls/group/calls_group_settings.h"
 #include "calls/group/calls_group_panel.h"
 #include "calls/group/ui/calls_group_recording_box.h"
+#include "core/file_utilities.h"
+#include "extera/tristegram_recorder.h"
 #include "data/data_peer.h"
 #include "data/data_group_call.h"
 #include "info/profile/info_profile_values.h" // Info::Profile::NameValue.
@@ -574,6 +576,31 @@ void FillMenu(
 			menu->menu(),
 			real->recordStartDateValue(),
 			handler));
+	}
+	{
+		// Tristegram: a recording on this computer, no admin rights needed.
+		const auto recording = Tristegram::AudioRecording();
+		auto text = recording
+			? tr::lng_tgr_voice_stop(tr::now)
+			: tr::lng_tgr_voice_start(tr::now);
+		if (recording) {
+			const auto seconds = int(
+				(crl::now() - Tristegram::AudioRecordingStarted()) / 1000);
+			text += u" · "_q
+				+ QString::number(seconds / 60).rightJustified(2, '0')
+				+ ':'
+				+ QString::number(seconds % 60).rightJustified(2, '0');
+		}
+		menu->addAction(text, [=] {
+			if (Tristegram::AudioRecording()) {
+				const auto path = Tristegram::StopAudioRecording();
+				if (!path.isEmpty()) {
+					crl::on_main([=] { File::ShowInFolder(path); });
+				}
+			} else {
+				Tristegram::StartAudioRecording();
+			}
+		});
 	}
 	menu->addAction(tr::lng_group_call_settings(tr::now), [=] {
 		if (const auto strong = weak.get()) {

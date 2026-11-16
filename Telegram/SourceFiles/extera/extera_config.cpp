@@ -112,6 +112,8 @@ constexpr auto kSaveDelay = crl::time(1000);
 		{ u"tristegram_type_effect"_q, 0 },
 		{ u"tristegram_record_fps"_q, 24 },
 		{ u"tristegram_record_scale"_q, 75 },
+		{ u"tristegram_record_sound"_q, true },
+		{ u"tristegram_record_mic"_q, false },
 		{ u"tristegram_live_kind"_q, 0 },
 		{ u"tristegram_live_fps"_q, 24 },
 		{ u"tristegram_live_version"_q, 0 },

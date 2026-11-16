@@ -10153,6 +10153,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_tristegram_bgs_title" = "Chat background";
 "lng_tristegram_preview_tap" = "Tap the logo to play the animation";
 "lng_tristegram_glass_menus" = "Frosted glass menus";
+"lng_tgr_sound_title" = "Sound";
+"lng_tgr_sound" = "Record the computer sound";
+"lng_tgr_mic" = "Add the microphone";
+"lng_tgr_sound_note" = "The screen recording gets everything you hear: music, videos, voice chats. The microphone is added on top when it is on. The same settings are used for recording voice chats.";
+"lng_tgr_voice_start" = "Record on this computer";
+"lng_tgr_voice_stop" = "Stop the recording";
 "lng_tgm_skin_vinyl" = "Vinyl";
 "lng_tgm_skin_cassette" = "Cassette";
 "lng_tgm_skin_raven" = "Raven and moon";

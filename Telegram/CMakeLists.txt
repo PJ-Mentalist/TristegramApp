@@ -2010,6 +2010,8 @@ PRIVATE
     extera/tristegram_music_skins.h
     extera/tristegram_system_media.cpp
     extera/tristegram_system_media.h
+    extera/tristegram_audio_capture.cpp
+    extera/tristegram_audio_capture.h
     extera/tristegram_icons.cpp
     extera/tristegram_icons.h
     extera/tristegram_logo.h

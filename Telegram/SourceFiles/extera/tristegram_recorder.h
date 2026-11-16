@@ -26,4 +26,12 @@ namespace Tristegram {
 // Finishes the file if a recording is running, for example on quit.
 void StopScreenRecording();
 
+// Records what the computer plays (and the microphone, if it is turned
+// on in the settings) to an .m4a file, for voice chats where you can
+// not start the Telegram recording.
+[[nodiscard]] bool AudioRecording();
+bool StartAudioRecording();
+[[nodiscard]] QString StopAudioRecording();
+[[nodiscard]] crl::time AudioRecordingStarted();
+
 } // namespace Tristegram
