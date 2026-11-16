@@ -593,6 +593,13 @@ bool FileLoadTask::CheckForSong(
 		u"audio/ogg"_q,
 		u"audio/flac"_q,
 		u"audio/opus"_q,
+		// Tristegram: any song the player can open.
+		u"audio/mpeg"_q,
+		u"audio/wav"_q,
+		u"audio/x-wav"_q,
+		u"audio/wave"_q,
+		u"audio/vnd.wave"_q,
+		u"audio/x-matroska"_q,
 	};
 	static const auto extensions = {
 		u".mp3"_q,
@@ -602,6 +609,12 @@ bool FileLoadTask::CheckForSong(
 		u".flac"_q,
 		u".opus"_q,
 		u".oga"_q,
+		u".wav"_q,
+		u".wave"_q,
+		u".mka"_q,
+		u".m4b"_q,
+		u".mp2"_q,
+		u".mpga"_q,
 	};
 	if (!filepath.isEmpty()
 		&& !CheckMimeOrExtensions(

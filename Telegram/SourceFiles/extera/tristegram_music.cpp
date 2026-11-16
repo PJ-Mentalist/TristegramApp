@@ -5,6 +5,15 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "extera/tristegram_music.h"
 
 #include "apiwrap.h"
+#include "api/api_common.h"
+#include "core/file_utilities.h"
+#include "extera/tristegram_music_skins.h"
+#include "extera/tristegram_system_media.h"
+#include "settings.h"
+#include "storage/storage_media_prepare.h"
+#include "ui/chat/attach/attach_prepare.h"
+#include "base/call_delayed.h"
+#include "base/random.h"
 #include "base/timer.h"
 #include "base/unique_qptr.h"
 #include "base/weak_ptr.h"
@@ -41,6 +50,8 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "styles/style_menu_icons.h"
 #include "styles/style_widgets.h"
 
+#include <QtCore/QDir>
+#include <QtCore/QFileInfo>
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
@@ -104,7 +115,79 @@ struct Track {
 struct Playlist {
 	QString name;
 	std::vector<Track> tracks;
+	QString cover; // a picture file chosen for the playlist
 };
+
+[[nodiscard]] QString CoversFolder() {
+	return cWorkingDir() + u"tdata/tristegram_covers/"_q;
+}
+
+// Copies a picture as a small square cover, returns its path.
+[[nodiscard]] QString SaveCover(const QImage &original) {
+	if (original.isNull()) {
+		return QString();
+	}
+	const auto side = std::min(original.width(), original.height());
+	const auto square = original.copy(
+		(original.width() - side) / 2,
+		(original.height() - side) / 2,
+		side,
+		side).scaled(
+			320,
+			320,
+			Qt::IgnoreAspectRatio,
+			Qt::SmoothTransformation);
+	QDir().mkpath(CoversFolder());
+	const auto path = CoversFolder()
+		+ QString::number(base::RandomValue<uint64>(), 16)
+		+ u".jpg"_q;
+	return square.save(path, "JPG", 90) ? path : QString();
+}
+
+[[nodiscard]] const std::vector<QString> &MusicExtensions() {
+	// What the player can open: the ffmpeg build has these demuxers.
+	static const auto result = std::vector<QString>{
+		u"mp3"_q, u"m4a"_q, u"m4b"_q, u"aac"_q, u"ogg"_q, u"oga"_q,
+		u"opus"_q, u"flac"_q, u"wav"_q, u"wave"_q, u"mka"_q, u"mp2"_q,
+		u"mpga"_q,
+	};
+	return result;
+}
+
+[[nodiscard]] bool IsMusicFile(const QString &path) {
+	const auto suffix = QFileInfo(path).suffix().toLower();
+	return ranges::contains(MusicExtensions(), suffix);
+}
+
+[[nodiscard]] QString MusicFilter() {
+	auto masks = QStringList();
+	for (const auto &extension : MusicExtensions()) {
+		masks.push_back(u"*."_q + extension);
+	}
+	return tr::lng_tgm_upload_filter(tr::now)
+		+ u" ("_q
+		+ masks.join(' ')
+		+ u");;"_q
+		+ FileDialog::AllFilesFilter();
+}
+
+// A picture in an album folder: cover.jpg, folder.png and so on.
+[[nodiscard]] QString FindFolderCover(const QDir &dir) {
+	const auto images = dir.entryInfoList(
+		{ u"*.jpg"_q, u"*.jpeg"_q, u"*.png"_q, u"*.webp"_q, u"*.bmp"_q },
+		QDir::Files,
+		QDir::Name);
+	for (const auto &info : images) {
+		const auto name = info.completeBaseName().toLower();
+		if (name.contains(u"cover"_q)
+			|| name.contains(u"folder"_q)
+			|| name.contains(u"front"_q)
+			|| name.contains(u"album"_q)) {
+			return info.absoluteFilePath();
+		}
+	}
+	return images.isEmpty() ? QString() : images.front().absoluteFilePath();
+}
 
 [[nodiscard]] std::pair<QString, QString> DescribeSong(
 		not_null<DocumentData*> document) {
@@ -289,6 +372,90 @@ public:
 			save();
 		}
 	}
+	void setCover(int index, const QString &path) {
+		if (index >= 0 && index < int(_playlists.size())) {
+			_playlists[index].cover = path;
+			_covers.remove(path);
+			save();
+		}
+	}
+	[[nodiscard]] QImage cover(int index) {
+		if (index < 0 || index >= int(_playlists.size())) {
+			return QImage();
+		}
+		const auto &path = _playlists[index].cover;
+		if (path.isEmpty()) {
+			return QImage();
+		}
+		const auto i = _covers.find(path);
+		if (i != end(_covers)) {
+			return i->second;
+		}
+		auto image = QImage(path).convertToFormat(
+			QImage::Format_ARGB32_Premultiplied);
+		_covers.emplace(path, image);
+		return image;
+	}
+	[[nodiscard]] int find(const QString &name) const {
+		for (auto i = 0; i != int(_playlists.size()); ++i) {
+			if (_playlists[i].name == name) {
+				return i;
+			}
+		}
+		return -1;
+	}
+	// Creates a playlist if there is none with this name.
+	int ensure(const QString &name, const QString &cover = QString()) {
+		auto index = find(name);
+		if (index < 0) {
+			_playlists.push_back({ name, {}, cover });
+			index = int(_playlists.size()) - 1;
+			save();
+		} else if (!cover.isEmpty() && _playlists[index].cover.isEmpty()) {
+			setCover(index, cover);
+		}
+		return index;
+	}
+
+	// Songs sent to Saved Messages go to a playlist once they are sent.
+	void expectUpload(
+			not_null<Main::Session*> session,
+			const QString &fileName,
+			const QString &playlist) {
+		_uploads.push_back({ fileName, playlist });
+		if (_uploadsSessions.contains(session)) {
+			return;
+		}
+		_uploadsSessions.emplace(session);
+		const auto weak = base::make_weak(session.get());
+		session->data().itemIdChanged(
+		) | rpl::on_next([=](const Data::Session::IdChange &change) {
+			const auto strong = weak.get();
+			if (!strong || _uploads.empty()) {
+				return;
+			}
+			const auto item = strong->data().message(change.newId);
+			if (!item || !item->history()->peer->isSelf()) {
+				return;
+			}
+			const auto document = SongOf(item);
+			if (!document) {
+				return;
+			}
+			const auto name = document->filename();
+			const auto i = ranges::find_if(_uploads, [&](const Upload &u) {
+				return (u.fileName == name);
+			});
+			if (i == end(_uploads)) {
+				return;
+			}
+			const auto playlist = i->playlist;
+			_uploads.erase(i);
+			if (auto track = TrackFromItem(item)) {
+				add(ensure(playlist), *track);
+			}
+		}, _lifetime);
+	}
 	void add(int index, const Track &track) {
 		if (index < 0 || index >= int(_playlists.size())) {
 			return;
@@ -400,6 +567,7 @@ private:
 			playlist.name = object.value(u"name"_q).toString();
 			playlist.tracks = DeserializeList(
 				object.value(u"tracks"_q).toArray());
+			playlist.cover = object.value(u"cover"_q).toString();
 			if (!playlist.name.isEmpty()) {
 				_playlists.push_back(std::move(playlist));
 			}
@@ -413,6 +581,9 @@ private:
 			auto object = QJsonObject();
 			object.insert(u"name"_q, playlist.name);
 			object.insert(u"tracks"_q, SerializeList(playlist.tracks));
+			if (!playlist.cover.isEmpty()) {
+				object.insert(u"cover"_q, playlist.cover);
+			}
 			array.push_back(object);
 		}
 		Extera::Config::Instance().setString(
@@ -429,8 +600,16 @@ private:
 		_changes.fire({});
 	}
 
+	struct Upload {
+		QString fileName;
+		QString playlist;
+	};
+
 	std::vector<Playlist> _playlists;
 	std::vector<Track> _recent;
+	std::vector<Upload> _uploads;
+	base::flat_set<not_null<Main::Session*>> _uploadsSessions;
+	base::flat_map<QString, QImage> _covers;
 	std::vector<Track> _queue;
 	int _queueIndex = -1;
 	base::weak_ptr<Main::Session> _session;
@@ -770,11 +949,123 @@ void ShowPlaylistNameBox(
 	}));
 }
 
+void UploadMusic(
+		not_null<Window::SessionController*> controller,
+		const QStringList &paths,
+		const QString &playlist) {
+	auto files = QStringList();
+	for (const auto &path : paths) {
+		if (IsMusicFile(path)) {
+			files.push_back(path);
+		}
+	}
+	if (files.isEmpty()) {
+		controller->showToast(tr::lng_tgm_upload_none(tr::now));
+		return;
+	}
+	const auto session = &controller->session();
+	auto list = Storage::PrepareMediaList(
+		files,
+		st::sendMediaPreviewSize,
+		session->premium());
+	if (list.error != Ui::PreparedList::Error::None) {
+		controller->showToast(tr::lng_tgm_upload_failed(tr::now));
+		return;
+	}
+	auto &library = Library::Instance();
+	library.ensure(playlist);
+	for (const auto &file : list.files) {
+		library.expectUpload(
+			session,
+			QFileInfo(file.path).fileName(),
+			playlist);
+	}
+	const auto history = session->data().history(session->userPeerId());
+	auto action = Api::SendAction(history);
+	action.clearDraft = false;
+	session->api().sendFiles(
+		std::move(list),
+		SendMediaType::File,
+		nullptr,
+		action);
+	controller->showToast(tr::lng_tgm_uploading(tr::now));
+}
+
+void ChooseMusicFiles(
+		not_null<Window::SessionController*> controller,
+		const QString &playlist) {
+	FileDialog::GetOpenPaths(
+		controller->widget(),
+		tr::lng_tgm_upload_files(tr::now),
+		MusicFilter(),
+		crl::guard(controller, [=](FileDialog::OpenResult &&result) {
+			UploadMusic(controller, result.paths, playlist);
+		}));
+}
+
+// A folder becomes a playlist with its name and its cover picture.
+void ChooseMusicFolder(not_null<Window::SessionController*> controller) {
+	FileDialog::GetFolder(
+		controller->widget(),
+		tr::lng_tgm_upload_album(tr::now),
+		QString(),
+		crl::guard(controller, [=](QString &&folder) {
+			const auto dir = QDir(folder);
+			auto paths = QStringList();
+			const auto entries = dir.entryInfoList(QDir::Files, QDir::Name);
+			for (const auto &info : entries) {
+				if (IsMusicFile(info.absoluteFilePath())) {
+					paths.push_back(info.absoluteFilePath());
+				}
+			}
+			if (paths.isEmpty()) {
+				controller->showToast(tr::lng_tgm_upload_none(tr::now));
+				return;
+			}
+			auto name = dir.dirName().trimmed();
+			if (name.isEmpty()) {
+				name = tr::lng_tgm_uploaded(tr::now);
+			}
+			const auto coverFile = FindFolderCover(dir);
+			const auto cover = coverFile.isEmpty()
+				? QString()
+				: SaveCover(QImage(coverFile));
+			Library::Instance().ensure(name, cover);
+			UploadMusic(controller, paths, name);
+		}));
+}
+
+void ChoosePlaylistCover(
+		not_null<Window::SessionController*> controller,
+		int index) {
+	FileDialog::GetOpenPath(
+		controller->widget(),
+		tr::lng_tgm_cover_choose(tr::now),
+		FileDialog::ImagesOrAllFilter(),
+		crl::guard(controller, [=](FileDialog::OpenResult &&result) {
+			auto image = !result.remoteContent.isEmpty()
+				? QImage::fromData(result.remoteContent)
+				: result.paths.isEmpty()
+				? QImage()
+				: QImage(result.paths.front());
+			const auto path = SaveCover(image);
+			if (path.isEmpty()) {
+				controller->showToast(tr::lng_tgm_cover_failed(tr::now));
+				return;
+			}
+			Library::Instance().setCover(index, path);
+		}));
+}
+
 enum class Source {
 	Mine,
 	Recent,
 	Playlist,
+	System,
+	Upload,
 };
+
+constexpr auto kSystemSourceSaved = 1000;
 
 // The left column: my music, recent and playlists.
 class Sidebar final : public Ui::RpWidget {
@@ -810,6 +1101,7 @@ private:
 	void relayout();
 	[[nodiscard]] int rowAt(QPoint position) const;
 	void showPlaylistMenu(int index);
+	void showUploadMenu();
 
 	const not_null<Window::SessionController*> _controller;
 	std::vector<Row> _rows;
@@ -862,6 +1154,9 @@ void Sidebar::relayout() {
 	};
 	add(Source::Mine, -1);
 	add(Source::Recent, -1);
+	if (SystemMedia::Supported()) {
+		add(Source::System, -1);
+	}
 	top += Px(8);
 	_labelTop = top;
 	top += Px(26);
@@ -870,6 +1165,7 @@ void Sidebar::relayout() {
 		add(Source::Playlist, i);
 	}
 	add(Source::Playlist, -2);
+	add(Source::Upload, -1);
 }
 
 int Sidebar::rowAt(QPoint position) const {
@@ -901,6 +1197,10 @@ void Sidebar::mousePressEvent(QMouseEvent *e) {
 		return;
 	}
 	const auto row = _rows[index];
+	if (row.source == Source::Upload) {
+		showUploadMenu();
+		return;
+	}
 	if (row.source == Source::Playlist && row.index == -2) {
 		if (e->button() == Qt::LeftButton) {
 			ShowPlaylistNameBox(_controller, QString(), [=](QString name) {
@@ -934,9 +1234,50 @@ void Sidebar::showPlaylistMenu(int index) {
 			Library::Instance().rename(index, name);
 		});
 	}, &st::menuIconEdit);
+	_menu->addAction(tr::lng_tgm_cover_choose(tr::now), [=] {
+		ChoosePlaylistCover(controller, index);
+	}, &st::menuIconPhoto);
+	{
+		const auto &playlists = Library::Instance().playlists();
+		if (index >= 0
+			&& index < int(playlists.size())
+			&& !playlists[index].cover.isEmpty()) {
+			_menu->addAction(tr::lng_tgm_cover_remove(tr::now), [=] {
+				Library::Instance().setCover(index, QString());
+			}, &st::menuIconCancel);
+		}
+	}
+	_menu->addAction(tr::lng_tgm_upload_here(tr::now), [=] {
+		const auto &playlists = Library::Instance().playlists();
+		if (index >= 0 && index < int(playlists.size())) {
+			ChooseMusicFiles(controller, playlists[index].name);
+		}
+	}, &st::menuIconAdd);
 	_menu->addAction(tr::lng_tgm_delete(tr::now), [=] {
 		Library::Instance().remove(index);
 	}, &st::menuIconDelete);
+	_menu->popup(QCursor::pos());
+}
+
+void Sidebar::showUploadMenu() {
+	_menu = base::make_unique_q<Ui::PopupMenu>(
+		this,
+		st::popupMenuWithIcons);
+	const auto controller = _controller;
+	const auto playlist = [=] {
+		const auto &playlists = Library::Instance().playlists();
+		return (_source == Source::Playlist
+			&& _index >= 0
+			&& _index < int(playlists.size()))
+			? playlists[_index].name
+			: tr::lng_tgm_uploaded(tr::now);
+	}();
+	_menu->addAction(tr::lng_tgm_upload_files(tr::now), [=] {
+		ChooseMusicFiles(controller, playlist);
+	}, &st::menuIconAdd);
+	_menu->addAction(tr::lng_tgm_upload_album(tr::now), [=] {
+		ChooseMusicFolder(controller);
+	}, &st::menuIconAddToFolder);
 	_menu->popup(QCursor::pos());
 }
 
@@ -947,8 +1288,9 @@ void Sidebar::paintEvent(QPaintEvent *e) {
 	const auto &playlists = Library::Instance().playlists();
 	for (auto i = 0; i != int(_rows.size()); ++i) {
 		const auto &row = _rows[i];
-		const auto create = (row.source == Source::Playlist)
-			&& (row.index == -2);
+		const auto create = ((row.source == Source::Playlist)
+			&& (row.index == -2))
+			|| (row.source == Source::Upload);
 		const auto active = !create
 			&& (row.source == _source)
 			&& (row.source != Source::Playlist || row.index == _index);
@@ -994,10 +1336,29 @@ void Sidebar::paintEvent(QPaintEvent *e) {
 				sub = QString::number(playlists[row.index].tracks.size());
 			}
 			break;
+		case Source::System:
+			text = tr::lng_tgm_system(tr::now);
+			color = QColor(0x30, 0xD1, 0x58);
+			break;
+		case Source::Upload:
+			text = tr::lng_tgm_upload(tr::now);
+			color = Alpha(st::windowFg->c, 0.1);
+			break;
 		}
+		const auto cover = (row.source == Source::Playlist && !create)
+			? Library::Instance().cover(row.index)
+			: QImage();
 		p.setPen(Qt::NoPen);
 		p.setBrush(active ? QColor(255, 255, 255, 60) : color);
 		p.drawRoundedRect(tile, Px(8), Px(8));
+		if (!cover.isNull()) {
+			p.save();
+			auto clip = QPainterPath();
+			clip.addRoundedRect(tile, Px(8), Px(8));
+			p.setClipPath(clip);
+			p.drawImage(tile, cover);
+			p.restore();
+		}
 		p.setPen(QPen(
 			(create && !active) ? st::windowFg->c : QColor(255, 255, 255),
 			Px(2),
@@ -1005,9 +1366,23 @@ void Sidebar::paintEvent(QPaintEvent *e) {
 			Qt::RoundCap));
 		const auto c = tile.center();
 		const auto s = tile.width() * 0.22;
-		if (create) {
+		if (!cover.isNull()) {
+		} else if (row.source == Source::Upload) {
+			p.drawLine(QPointF(c.x(), c.y() + s), QPointF(c.x(), c.y() - s));
+			p.drawLine(QPointF(c.x(), c.y() - s), QPointF(c.x() - s * 0.7, c.y() - s * 0.3));
+			p.drawLine(QPointF(c.x(), c.y() - s), QPointF(c.x() + s * 0.7, c.y() - s * 0.3));
+			p.drawLine(QPointF(c.x() - s, c.y() + s * 1.2), QPointF(c.x() + s, c.y() + s * 1.2));
+		} else if (create) {
 			p.drawLine(QPointF(c.x() - s, c.y()), QPointF(c.x() + s, c.y()));
 			p.drawLine(QPointF(c.x(), c.y() - s), QPointF(c.x(), c.y() + s));
+		} else if (row.source == Source::System) {
+			p.setBrush(Qt::NoBrush);
+			p.drawRoundedRect(
+				QRectF(c.x() - s * 1.2, c.y() - s * 0.95, s * 2.4, s * 1.5),
+				s * 0.2,
+				s * 0.2);
+			p.drawLine(QPointF(c.x(), c.y() + s * 0.55), QPointF(c.x(), c.y() + s * 1.0));
+			p.drawLine(QPointF(c.x() - s * 0.6, c.y() + s * 1.1), QPointF(c.x() + s * 0.6, c.y() + s * 1.1));
 		} else if (row.source == Source::Recent) {
 			p.setBrush(Qt::NoBrush);
 			p.drawEllipse(c, s * 1.25, s * 1.25);
@@ -1073,10 +1448,22 @@ private:
 	[[nodiscard]] int rowAt(QPoint position) const;
 	[[nodiscard]] QRect moreRect(int index) const;
 
+	// "On the computer": what Spotify or a browser plays now.
+	void requestSystem();
+	void paintSystem(QPainter &p);
+	[[nodiscard]] QRectF systemCard() const;
+	[[nodiscard]] QRectF systemButton(int index) const;
+	[[nodiscard]] int systemButtonAt(QPoint position) const;
+
 	const not_null<Window::SessionController*> _controller;
 	Source _source = Source::Mine;
 	int _index = -1;
 	std::vector<Track> _tracks;
+	std::optional<SystemMedia::Track> _system;
+	base::Timer _systemTimer;
+	bool _systemLoading = false;
+	bool _systemLoaded = false;
+	int _systemOver = -1;
 	int _over = -1;
 	bool _overMore = false;
 	base::unique_qptr<Ui::PopupMenu> _menu;
@@ -1089,11 +1476,12 @@ TrackList::TrackList(
 	not_null<Window::SessionController*> controller)
 : RpWidget(parent)
 , _controller(controller)
+, _systemTimer([=] { requestSystem(); })
 , _animation([=] { update(); }) {
 	setMouseTracking(true);
 	Library::Instance().changes(
 	) | rpl::on_next([=] {
-		if (_source != Source::Mine) {
+		if (_source != Source::Mine && _source != Source::System) {
 			refresh();
 		}
 	}, lifetime());
@@ -1125,6 +1513,12 @@ TrackList::TrackList(
 void TrackList::setSource(Source source, int index) {
 	_source = source;
 	_index = index;
+	if (source == Source::System) {
+		requestSystem();
+		_systemTimer.callEach(2000);
+	} else {
+		_systemTimer.cancel();
+	}
 	if (source == Source::Mine) {
 		const auto session = &_controller->session();
 		const auto peerId = session->userPeerId();
@@ -1157,6 +1551,9 @@ void TrackList::refresh() {
 			_tracks = playlists[_index].tracks;
 		}
 	} break;
+	case Source::System:
+	case Source::Upload:
+		break;
 	}
 	_over = -1;
 	resizeToWidth(width());
@@ -1164,7 +1561,195 @@ void TrackList::refresh() {
 }
 
 int TrackList::resizeGetHeight(int newWidth) {
+	if (_source == Source::System) {
+		return Px(300);
+	}
 	return std::max(int(_tracks.size()) * Px(54) + Px(12), Px(150));
+}
+
+void TrackList::requestSystem() {
+	if (_systemLoading || (!isVisible() && _systemLoaded)) {
+		return;
+	}
+	_systemLoading = true;
+	SystemMedia::Request(crl::guard(this, [=](
+			std::optional<SystemMedia::Track> track) {
+		_systemLoading = false;
+		_systemLoaded = true;
+		_system = std::move(track);
+		if (_source == Source::System) {
+			update();
+		}
+	}));
+}
+
+QRectF TrackList::systemCard() const {
+	return QRectF(Px(16), Px(12), width() - Px(32), Px(220));
+}
+
+QRectF TrackList::systemButton(int index) const {
+	const auto card = systemCard();
+	const auto cover = card.height() - Px(32);
+	const auto left = card.x() + Px(16) + cover + Px(24);
+	const auto play = Px(48);
+	const auto small = Px(36);
+	const auto y = card.bottom() - Px(16) - play;
+	switch (index) {
+	case 0: return QRectF(left, y + (play - small) / 2., small, small);
+	case 1: return QRectF(left + small + Px(12), y, play, play);
+	case 2: return QRectF(left + small + play + Px(24), y + (play - small) / 2., small, small);
+	}
+	return QRectF();
+}
+
+int TrackList::systemButtonAt(QPoint position) const {
+	if (!_system) {
+		return -1;
+	}
+	for (auto i = 0; i != 3; ++i) {
+		if (systemButton(i).contains(position)) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+void TrackList::paintSystem(QPainter &p) {
+	const auto colors = CurrentLogoStyle();
+	const auto card = systemCard();
+	if (!_system) {
+		p.setFont(st::normalFont);
+		p.setPen(st::windowSubTextFg);
+		p.drawText(
+			rect().marginsRemoved({ Px(24), Px(20), Px(24), Px(20) }),
+			Qt::AlignHCenter | Qt::AlignTop | Qt::TextWordWrap,
+			_systemLoaded
+				? tr::lng_tgm_system_empty(tr::now)
+				: tr::lng_tgm_system_loading(tr::now));
+		return;
+	}
+	const auto &track = *_system;
+	{
+		auto wash = QLinearGradient(card.topLeft(), card.bottomRight());
+		wash.setColorAt(0., Alpha(colors.from, 0.16));
+		wash.setColorAt(1., Alpha(colors.to, 0.06));
+		p.setPen(Qt::NoPen);
+		p.setBrush(wash);
+		p.drawRoundedRect(card, Px(20), Px(20));
+	}
+	const auto side = card.height() - Px(32);
+	const auto coverRect = QRectF(card.x() + Px(16), card.y() + Px(16), side, side);
+	{
+		p.save();
+		auto clip = QPainterPath();
+		clip.addRoundedRect(coverRect, Px(14), Px(14));
+		p.setClipPath(clip);
+		if (!track.cover.isNull()) {
+			const auto &cover = track.cover;
+			const auto min = std::min(cover.width(), cover.height());
+			p.drawImage(
+				coverRect,
+				cover,
+				QRectF(
+					(cover.width() - min) / 2.,
+					(cover.height() - min) / 2.,
+					min,
+					min));
+		} else {
+			auto gradient = QLinearGradient(coverRect.topLeft(), coverRect.bottomRight());
+			gradient.setColorAt(0., colors.from);
+			gradient.setColorAt(1., colors.to);
+			p.fillRect(coverRect, gradient);
+		}
+		p.restore();
+	}
+	const auto left = int(coverRect.right()) + Px(24);
+	const auto available = int(card.right()) - left - Px(16);
+	const auto small = Font(12);
+	p.setFont(small->f);
+	p.setPen(st::windowSubTextFg);
+	p.drawText(
+		QRect(left, int(card.y()) + Px(18), available, small->height),
+		Qt::AlignLeft | Qt::AlignVCenter,
+		small->elided(
+			tr::lng_tgm_system_from(tr::now) + ' ' + track.app,
+			available));
+	const auto big = Font(18, true);
+	p.setFont(big->f);
+	p.setPen(st::windowBoldFg);
+	p.drawText(
+		QRect(left, int(card.y()) + Px(24) + small->height, available, big->height),
+		Qt::AlignLeft | Qt::AlignVCenter,
+		big->elided(
+			track.title.isEmpty() ? tr::lng_tgm_unknown(tr::now) : track.title,
+			available));
+	p.setFont(st::normalFont);
+	p.setPen(st::windowSubTextFg);
+	p.drawText(
+		QRect(
+			left,
+			int(card.y()) + Px(28) + small->height + big->height,
+			available,
+			st::normalFont->height),
+		Qt::AlignLeft | Qt::AlignVCenter,
+		st::normalFont->elided(
+			track.artist.isEmpty()
+				? tr::lng_tgm_unknown_artist(tr::now)
+				: track.artist,
+			available));
+	if (track.duration > 0) {
+		const auto y = card.y() + Px(36) + small->height + big->height
+			+ st::normalFont->height + Px(8);
+		const auto line = QRectF(left, y, available, Px(4));
+		p.setPen(Qt::NoPen);
+		p.setBrush(Alpha(st::windowFg->c, 0.12));
+		p.drawRoundedRect(line, Px(2), Px(2));
+		auto played = QLinearGradient(line.topLeft(), line.topRight());
+		played.setColorAt(0., colors.from);
+		played.setColorAt(1., colors.to);
+		p.setBrush(played);
+		const auto progress = std::clamp(
+			track.position / double(track.duration),
+			0.,
+			1.);
+		p.drawRoundedRect(
+			QRectF(line.x(), line.y(), line.width() * progress, line.height()),
+			Px(2),
+			Px(2));
+	}
+	for (auto i = 0; i != 3; ++i) {
+		const auto r = systemButton(i);
+		if (i == 1) {
+			auto gradient = QLinearGradient(r.topLeft(), r.bottomRight());
+			gradient.setColorAt(0., colors.from);
+			gradient.setColorAt(1., colors.to);
+			p.setPen(Qt::NoPen);
+			p.setBrush(gradient);
+			p.drawEllipse(r);
+			PaintPlayIcon(
+				p,
+				r.marginsRemoved(QMarginsF(Px(13), Px(13), Px(13), Px(13))),
+				track.playing,
+				QColor(255, 255, 255));
+		} else {
+			if (_systemOver == i) {
+				p.setPen(Qt::NoPen);
+				p.setBrush(Alpha(st::windowFg->c, 0.08));
+				p.drawEllipse(r);
+			}
+			PaintSkipIcon(
+				p,
+				r.marginsRemoved(QMarginsF(Px(9), Px(9), Px(9), Px(9))),
+				(i == 2),
+				st::windowFg->c);
+		}
+	}
+	p.setFont(small->f);
+	p.setPen(st::windowSubTextFg);
+	p.drawText(
+		QRectF(card.x(), card.bottom() + Px(12), card.width(), Px(60)),
+		Qt::AlignHCenter | Qt::AlignTop | Qt::TextWordWrap,
+		tr::lng_tgm_system_about(tr::now));
 }
 
 int TrackList::rowAt(QPoint position) const {
@@ -1185,6 +1770,15 @@ QRect TrackList::moreRect(int index) const {
 }
 
 void TrackList::mouseMoveEvent(QMouseEvent *e) {
+	if (_source == Source::System) {
+		const auto over = systemButtonAt(e->pos());
+		if (_systemOver != over) {
+			_systemOver = over;
+			setCursor((over >= 0) ? style::cur_pointer : style::cur_default);
+			update();
+		}
+		return;
+	}
 	const auto over = rowAt(e->pos());
 	const auto overMore = (over >= 0) && moreRect(over).contains(e->pos());
 	if (_over != over || _overMore != overMore) {
@@ -1202,6 +1796,24 @@ void TrackList::leaveEventHook(QEvent *e) {
 }
 
 void TrackList::mousePressEvent(QMouseEvent *e) {
+	if (_source == Source::System) {
+		const auto button = systemButtonAt(e->pos());
+		if (button < 0 || e->button() != Qt::LeftButton) {
+			return;
+		}
+		using Command = SystemMedia::Command;
+		SystemMedia::Send((button == 0)
+			? Command::Previous
+			: (button == 1)
+			? Command::Toggle
+			: Command::Next);
+		if (button == 1 && _system) {
+			_system->playing = !_system->playing;
+			update();
+		}
+		base::call_delayed(400, this, [=] { requestSystem(); });
+		return;
+	}
 	const auto index = rowAt(e->pos());
 	if (index < 0) {
 		return;
@@ -1262,6 +1874,10 @@ void TrackList::paintEvent(QPaintEvent *e) {
 	auto p = QPainter(this);
 	auto hq = PainterHighQualityEnabler(p);
 	const auto now = crl::now();
+	if (_source == Source::System) {
+		paintSystem(p);
+		return;
+	}
 	if (_tracks.empty()) {
 		p.setFont(st::normalFont);
 		p.setPen(st::windowSubTextFg);
@@ -1384,6 +2000,7 @@ private:
 		Play,
 		Next,
 		Lyrics,
+		Skin,
 		Wave,
 	};
 	void updateTrack();
@@ -1412,6 +2029,9 @@ private:
 	double _armTarget = 0.;
 	crl::time _lastSpin = 0;
 	double _angle = 0.;
+	crl::time _lastPlayed = 0;
+	double _played = 0.;
+	base::unique_qptr<Ui::PopupMenu> _menu;
 	Button _over = Button::None;
 	Button _pressed = Button::None;
 	double _hover = -1.;
@@ -1453,6 +2073,8 @@ MusicWindow::MusicWindow(
 				? 0
 				: (chosen.first == Source::Recent)
 				? 1
+				: (chosen.first == Source::System)
+				? kSystemSourceSaved
 				: (2 + chosen.second));
 	}, lifetime());
 
@@ -1497,6 +2119,8 @@ MusicWindow::MusicWindow(
 	const auto playlists = int(Library::Instance().playlists().size());
 	if (saved == 1) {
 		_sidebar->choose(Source::Recent, -1);
+	} else if (saved == kSystemSourceSaved && SystemMedia::Supported()) {
+		_sidebar->choose(Source::System, -1);
 	} else if (saved >= 2 && saved - 2 < playlists) {
 		_sidebar->choose(Source::Playlist, saved - 2);
 	} else {
@@ -1567,6 +2191,8 @@ QRectF MusicWindow::buttonRect(Button button) const {
 		return QRectF(center + play / 2. + Px(10), y + (play - small) / 2., small, small);
 	case Button::Lyrics:
 		return QRectF(wave.right() - small, y + (play - small) / 2., small, small);
+	case Button::Skin:
+		return QRectF(wave.right() - small * 2 - Px(8), y + (play - small) / 2., small, small);
 	case Button::Wave:
 		return wave;
 	case Button::None:
@@ -1581,6 +2207,7 @@ MusicWindow::Button MusicWindow::buttonAt(QPoint position) const {
 			Button::Play,
 			Button::Next,
 			Button::Lyrics,
+			Button::Skin,
 			Button::Wave }) {
 		if (buttonRect(button).contains(position)) {
 			return button;
@@ -1682,6 +2309,23 @@ void MusicWindow::mouseReleaseEvent(QMouseEvent *e) {
 		close();
 		Extera::FullPlayer::Show(controller);
 	} break;
+	case Button::Skin: {
+		_menu = base::make_unique_q<Ui::PopupMenu>(
+			this,
+			st::popupMenuWithIcons);
+		const auto current = MusicSkins::Current();
+		for (auto i = 0; i != MusicSkins::kCount; ++i) {
+			const auto skin = MusicSkins::Skin(i);
+			_menu->addAction(
+				MusicSkins::Name(skin),
+				crl::guard(this, [=] {
+					MusicSkins::Choose(skin);
+					update();
+				}),
+				(skin == current) ? &st::menuIconSelect : nullptr);
+		}
+		_menu->popup(QCursor::pos());
+	} break;
 	default: break;
 	}
 }
@@ -1742,15 +2386,40 @@ void MusicWindow::paintEvent(QPaintEvent *e) {
 		p.setBrush(glow);
 		p.drawEllipse(disc.center(), disc.width() * 0.62, disc.width() * 0.62);
 	}
-	PaintVinyl(
-		p,
-		disc,
-		_cover.image(),
-		angle,
-		_track ? _track->document : 0);
+	if (IsPlaying()) {
+		if (_lastPlayed) {
+			_played += (now - _lastPlayed) / 1000.;
+		}
+		_lastPlayed = now;
+	} else {
+		_lastPlayed = 0;
+	}
+	const auto skin = MusicSkins::Current();
+	if (skin != MusicSkins::Skin::Vinyl) {
+		const auto total = length();
+		MusicSkins::Paint(p, disc, skin, {
+			.cover = _cover.image(),
+			.title = _track ? _track->title : QString(),
+			.from = colors.from,
+			.to = colors.to,
+			.seconds = _played,
+			.progress = (total > 0)
+				? std::clamp(position() / double(total), 0., 1.)
+				: 0.,
+			.playing = IsPlaying(),
+			.seed = _track ? _track->document : 0,
+		});
+	} else {
+		PaintVinyl(
+			p,
+			disc,
+			_cover.image(),
+			angle,
+			_track ? _track->document : 0);
+	}
 
 	// The tone arm moves onto the record while it plays.
-	{
+	if (skin == MusicSkins::Skin::Vinyl) {
 		const auto arm = _arm.value(_armTarget);
 		const auto pivot = QPointF(
 			disc.right() + Px(8),
@@ -1848,7 +2517,7 @@ void MusicWindow::paintEvent(QPaintEvent *e) {
 			IsPlaying(),
 			QColor(255, 255, 255));
 	}
-	for (const auto button : { Button::Previous, Button::Next, Button::Lyrics }) {
+	for (const auto button : { Button::Previous, Button::Next, Button::Lyrics, Button::Skin }) {
 		const auto r = buttonRect(button);
 		if (_over == button) {
 			p.setPen(Qt::NoPen);
@@ -1856,7 +2525,23 @@ void MusicWindow::paintEvent(QPaintEvent *e) {
 			p.drawEllipse(r);
 		}
 		const auto inner = r.marginsRemoved(QMarginsF(Px(9), Px(9), Px(9), Px(9)));
-		if (button == Button::Lyrics) {
+		if (button == Button::Skin) {
+			// Four tiles: the look of the player.
+			const auto half = inner.width() / 2.;
+			const auto gap = Px(2);
+			p.setPen(Qt::NoPen);
+			p.setBrush(st::windowSubTextFg);
+			for (auto k = 0; k != 4; ++k) {
+				p.drawRoundedRect(
+					QRectF(
+						inner.x() + (k % 2) * half + gap / 2.,
+						inner.y() + (k / 2) * half + gap / 2.,
+						half - gap,
+						half - gap),
+					Px(2),
+					Px(2));
+			}
+		} else if (button == Button::Lyrics) {
 			// Lines of text with a note: the full player with lyrics.
 			p.setPen(QPen(st::windowSubTextFg->c, Px(2), Qt::SolidLine, Qt::RoundCap));
 			for (auto i = 0; i != 3; ++i) {
@@ -1902,6 +2587,9 @@ private:
 	Ui::Animations::Basic _spin;
 	crl::time _lastSpin = 0;
 	double _angle = 0.;
+	crl::time _lastPlayed = 0;
+	double _played = 0.;
+	base::unique_qptr<Ui::PopupMenu> _menu;
 	Part _over = Part::None;
 	Part _pressed = Part::None;
 	Media::Player::TrackState _state;
