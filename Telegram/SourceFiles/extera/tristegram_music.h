@@ -35,4 +35,11 @@ void AddPlaylistMenuActions(
 	not_null<Ui::PopupMenu*> menu,
 	not_null<HistoryItem*> item);
 
+// "Install the theme" and "Save the playlist" for messages with codes
+// another Tristegram sent.
+void AddShareImportActions(
+	not_null<Ui::PopupMenu*> menu,
+	not_null<HistoryItem*> item,
+	not_null<Window::SessionController*> controller);
+
 } // namespace Tristegram

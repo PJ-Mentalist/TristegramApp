@@ -106,6 +106,7 @@ constexpr auto kSaveDelay = crl::time(1000);
 		{ u"tristegram_settings_section"_q, 0 },
 		{ u"tristegram_music_source"_q, 0 },
 		{ u"tristegram_player_skin"_q, 0 },
+		{ u"tristegram_custom_themes"_q, QString() },
 		{ u"tristegram_font_size"_q, 0 },
 		{ u"tristegram_font_weight"_q, 0 },
 		{ u"tristegram_click_effect"_q, 1 },

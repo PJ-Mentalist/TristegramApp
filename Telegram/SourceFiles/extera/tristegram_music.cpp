@@ -7,6 +7,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "apiwrap.h"
 #include "api/api_common.h"
 #include "core/file_utilities.h"
+#include "extera/tristegram_custom.h"
 #include "extera/tristegram_music_skins.h"
 #include "extera/tristegram_system_media.h"
 #include "settings.h"
@@ -24,6 +25,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "data/data_peer.h"
 #include "data/data_saved_music.h"
 #include "data/data_session.h"
+#include "data/data_thread.h"
 #include "extera/extera_config.h"
 #include "extera/extera_full_player.h"
 #include "extera/tristegram_logo.h"
@@ -1057,6 +1059,146 @@ void ChoosePlaylistCover(
 		}));
 }
 
+constexpr auto kPlaylistCodePrefix = "tristegram-playlist:";
+
+// Sends the code message and then the songs themselves, so another
+// Tristegram can make the same playlist from that chat.
+void SharePlaylist(
+		not_null<Window::SessionController*> controller,
+		int index) {
+	const auto &playlists = Library::Instance().playlists();
+	if (index < 0 || index >= int(playlists.size())) {
+		return;
+	}
+	const auto playlist = playlists[index];
+	const auto session = &controller->session();
+	auto items = HistoryItemsList();
+	for (const auto &track : playlist.tracks) {
+		if (track.saved) {
+			for (const auto item : session->data().savedMusic().list(
+					session->userPeerId())) {
+				const auto document = SongOf(item);
+				if (document && document->id == track.document) {
+					items.push_back(item);
+					break;
+				}
+			}
+		} else if (const auto item = session->data().message(
+				track.peer,
+				track.msg)) {
+			items.push_back(item);
+		}
+	}
+	if (items.empty()) {
+		controller->showToast(tr::lng_tgm_share_empty(tr::now));
+		return;
+	}
+	auto object = QJsonObject();
+	object.insert(u"name"_q, playlist.name);
+	object.insert(u"count"_q, int(items.size()));
+	const auto code = QString::fromLatin1(kPlaylistCodePrefix)
+		+ QString::fromLatin1(QJsonDocument(object).toJson(
+			QJsonDocument::Compact).toBase64(
+				QByteArray::Base64UrlEncoding
+				| QByteArray::OmitTrailingEquals));
+	const auto text = tr::lng_tgm_share_text(tr::now)
+		+ u" «"_q
+		+ playlist.name
+		+ u"» · "_q
+		+ QString::number(items.size())
+		+ '\n'
+		+ code;
+	auto ids = MessageIdsList();
+	for (const auto item : items) {
+		ids.push_back(item->fullId());
+	}
+	SendToChosenChat(controller, text, [=](not_null<Data::Thread*> thread) {
+		auto resolved = HistoryItemsList();
+		for (const auto &id : ids) {
+			if (const auto item = thread->session().data().message(id)) {
+				resolved.push_back(item);
+			}
+		}
+		if (!resolved.empty()) {
+			thread->session().api().forwardMessages(
+				Data::ResolvedForwardDraft{ .items = std::move(resolved) },
+				Api::SendAction(thread));
+		}
+	});
+}
+
+[[nodiscard]] std::optional<QJsonObject> PlaylistCode(
+		not_null<HistoryItem*> item) {
+	const auto text = item->originalText().text;
+	const auto prefix = QString::fromLatin1(kPlaylistCodePrefix);
+	const auto start = text.indexOf(prefix);
+	if (start < 0) {
+		return std::nullopt;
+	}
+	auto end = start + prefix.size();
+	while (end < text.size()
+		&& (text[end].isLetterOrNumber()
+			|| text[end] == '-'
+			|| text[end] == '_')) {
+		++end;
+	}
+	const auto encoded = text.mid(
+		start + prefix.size(),
+		end - start - prefix.size());
+	const auto object = QJsonDocument::fromJson(QByteArray::fromBase64(
+		encoded.toLatin1(),
+		QByteArray::Base64UrlEncoding
+			| QByteArray::OmitTrailingEquals)).object();
+	if (object.value(u"name"_q).toString().isEmpty()) {
+		return std::nullopt;
+	}
+	return object;
+}
+
+// The songs right after the code message, from the same sender.
+void ImportPlaylist(
+		not_null<Window::SessionController*> controller,
+		not_null<HistoryItem*> item,
+		const QJsonObject &code) {
+	const auto count = std::clamp(code.value(u"count"_q).toInt(), 1, 500);
+	const auto history = item->history();
+	const auto from = item->from();
+	auto tracks = std::vector<Track>();
+	const auto last = item->id.bare + count * 4 + 20;
+	for (auto id = item->id.bare + 1; id <= last; ++id) {
+		const auto next = history->owner().message(
+			history->peer->id,
+			MsgId(id));
+		if (!next || next->from() != from) {
+			continue;
+		}
+		if (auto track = TrackFromItem(next)) {
+			tracks.push_back(std::move(*track));
+			if (int(tracks.size()) >= count) {
+				break;
+			}
+		}
+	}
+	if (tracks.empty()) {
+		controller->showToast(tr::lng_tgm_import_empty(tr::now));
+		return;
+	}
+	auto &library = Library::Instance();
+	auto name = code.value(u"name"_q).toString();
+	if (library.find(name) >= 0) {
+		auto i = 2;
+		while (library.find(name + u" ("_q + QString::number(i) + ')') >= 0) {
+			++i;
+		}
+		name += u" ("_q + QString::number(i) + ')';
+	}
+	const auto index = library.ensure(name);
+	for (const auto &track : tracks) {
+		library.add(index, track);
+	}
+	controller->showToast(tr::lng_tgm_import_done(tr::now));
+}
+
 enum class Source {
 	Mine,
 	Recent,
@@ -1247,6 +1389,9 @@ void Sidebar::showPlaylistMenu(int index) {
 			}, &st::menuIconCancel);
 		}
 	}
+	_menu->addAction(tr::lng_tgm_share(tr::now), [=] {
+		SharePlaylist(controller, index);
+	}, &st::menuIconShare);
 	_menu->addAction(tr::lng_tgm_upload_here(tr::now), [=] {
 		const auto &playlists = Library::Instance().playlists();
 		if (index >= 0 && index < int(playlists.size())) {
@@ -2818,6 +2963,29 @@ object_ptr<Ui::RpWidget> CreateNowPlayingPill(
 		QWidget *parent,
 		not_null<Window::SessionController*> controller) {
 	return object_ptr<NowPlayingPill>(parent, controller);
+}
+
+void AddShareImportActions(
+		not_null<Ui::PopupMenu*> menu,
+		not_null<HistoryItem*> item,
+		not_null<Window::SessionController*> controller) {
+	const auto text = item->originalText().text;
+	if (IsCustomThemeCode(text)) {
+		menu->addAction(tr::lng_tgs_theme_install(tr::now), [=] {
+			if (!ImportCustomTheme(controller, text)) {
+				controller->showToast(tr::lng_tgs_theme_bad_code(tr::now));
+			}
+		}, &st::menuIconPalette);
+	}
+	if (const auto code = PlaylistCode(item)) {
+		const auto itemId = item->fullId();
+		const auto value = *code;
+		menu->addAction(tr::lng_tgm_import(tr::now), [=] {
+			if (const auto item = controller->session().data().message(itemId)) {
+				ImportPlaylist(controller, item, value);
+			}
+		}, &st::menuIconAddToFolder);
+	}
 }
 
 void AddPlaylistMenuActions(

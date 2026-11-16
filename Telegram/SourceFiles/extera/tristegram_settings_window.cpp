@@ -4,6 +4,8 @@ Telegram Desktop. Licensed under GNU GPL v3.
 */
 #include "extera/tristegram_settings_window.h"
 
+#include "ui/style/style_core_icon_effects.h"
+
 #include "boxes/background_box.h"
 #include "core/application.h"
 #include "core/core_settings.h"
@@ -35,6 +37,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/checkbox.h"
 #include "ui/widgets/labels.h"
+#include "ui/widgets/popup_menu.h"
 #include "ui/widgets/scroll_area.h"
 #include "ui/wrap/padding_wrap.h"
 #include "ui/wrap/slide_wrap.h"
@@ -50,6 +53,8 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "styles/style_filter_icons.h"
 #include "styles/style_settings.h"
 
+#include <QtGui/QClipboard>
+#include <QtGui/QGuiApplication>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPainterPath>
 #include <QtGui/QPolygonF>
@@ -1037,6 +1042,95 @@ void FillFonts(
 	AddNote(content, tr::lng_tgs_font_size_note(tr::now));
 }
 
+// My own themes: save the current look, apply, send to a chat.
+void FillCustomThemes(
+		not_null<Ui::VerticalLayout*> content,
+		not_null<Window::SessionController*> controller) {
+	AddLabel(content, tr::lng_tgs_my_themes(tr::now));
+	const auto group = AddGroup(content);
+	AddActionRow(
+		group,
+		tr::lng_tgs_accent(tr::now),
+		[] { return CurrentAccentColor().name().toUpper(); },
+		[=] {
+			ChooseColor(
+				controller,
+				tr::lng_tgs_accent(),
+				CurrentAccentColor(),
+				[=](QColor color) { ApplyAccentColor(controller, color); });
+		});
+	const auto list = group->add(object_ptr<Ui::VerticalLayout>(group));
+	const auto menu = list->lifetime().make_state<
+		base::unique_qptr<Ui::PopupMenu>>();
+	const auto refill = list->lifetime().make_state<Fn<void()>>();
+	*refill = [=] {
+		list->clear();
+		const auto names = CustomThemeNames();
+		for (auto i = 0; i != int(names.size()); ++i) {
+			const auto name = names[i];
+			AddActionRow(
+				list,
+				name,
+				[] { return tr::lng_tgs_theme_actions(tr::now); },
+				[=] {
+					*menu = base::make_unique_q<Ui::PopupMenu>(
+						list,
+						st::popupMenuWithIcons);
+					(*menu)->addAction(tr::lng_tgs_theme_apply(tr::now), [=] {
+						ApplyCustomTheme(controller, i);
+					}, &st::menuIconSelect);
+					(*menu)->addAction(tr::lng_tgs_theme_send(tr::now), [=] {
+						SendToChosenChat(
+							controller,
+							tr::lng_tgs_theme_share_text(tr::now)
+								+ u" «"_q + name + u"»\n"_q
+								+ CustomThemeCode(i));
+					}, &st::menuIconShare);
+					(*menu)->addAction(tr::lng_tgs_theme_copy(tr::now), [=] {
+						QGuiApplication::clipboard()->setText(
+							CustomThemeCode(i));
+						controller->showToast(
+							tr::lng_tgs_theme_copied(tr::now));
+					}, &st::menuIconCopy);
+					(*menu)->addAction(tr::lng_tgs_theme_delete(tr::now), [=] {
+						RemoveCustomTheme(i);
+						crl::on_main(list, [=] { (*refill)(); });
+					}, &st::menuIconDelete);
+					(*menu)->popup(QCursor::pos());
+				});
+		}
+	};
+	(*refill)();
+	AddActionRow(group, tr::lng_tgs_theme_save(tr::now), nullptr, [=] {
+		AskText(
+			controller,
+			tr::lng_tgs_theme_save(tr::now),
+			tr::lng_tgs_theme_name(tr::now),
+			QString(),
+			[=](QString name) {
+				SaveCustomTheme(name);
+				(*refill)();
+				controller->showToast(tr::lng_tgs_theme_saved(tr::now));
+			});
+	});
+	AddActionRow(group, tr::lng_tgs_theme_import(tr::now), nullptr, [=] {
+		AskText(
+			controller,
+			tr::lng_tgs_theme_import(tr::now),
+			u"tristegram-theme:..."_q,
+			QGuiApplication::clipboard()->text().trimmed(),
+			[=](QString code) {
+				if (ImportCustomTheme(controller, code)) {
+					(*refill)();
+				} else {
+					controller->showToast(
+						tr::lng_tgs_theme_bad_code(tr::now));
+				}
+			});
+	});
+	AddNote(content, tr::lng_tgs_my_themes_note(tr::now));
+}
+
 void FillThemes(
 		not_null<Ui::VerticalLayout*> content,
 		not_null<Window::SessionController*> controller) {
@@ -1099,6 +1193,62 @@ void FillThemes(
 			[] { Config().setBool(u"tristegram_bubble_gradient"_q, true); });
 	}
 	AddNote(content, tr::lng_tristegram_bubbles_about(tr::now));
+
+	// Tristegram: ready gradients for my messages in one click.
+	struct GradientPreset {
+		QColor from;
+		QColor to;
+		QString name;
+	};
+	const auto gradients = std::make_shared<std::vector<GradientPreset>>(
+		std::vector<GradientPreset>{
+			{ QColor(0xF0, 0x7A, 0x0C), QColor(0xFF, 0x37, 0x5F), tr::lng_tgs_grad_sunset(tr::now) },
+			{ QColor(0x00, 0xC6, 0xFB), QColor(0x00, 0x5B, 0xEA), tr::lng_tgs_grad_ocean(tr::now) },
+			{ QColor(0x43, 0xE9, 0x7B), QColor(0x38, 0xF9, 0xD7), tr::lng_tgs_grad_mint(tr::now) },
+			{ QColor(0xB7, 0x21, 0xFF), QColor(0x21, 0xD4, 0xFD), tr::lng_tgs_grad_neon(tr::now) },
+			{ QColor(0xFF, 0x9A, 0x9E), QColor(0xF6, 0x6F, 0xB1), tr::lng_tgs_grad_sakura(tr::now) },
+			{ QColor(0xF8, 0x36, 0x00), QColor(0xF9, 0xD4, 0x23), tr::lng_tgs_grad_lava(tr::now) },
+			{ QColor(0x8E, 0x2D, 0xE2), QColor(0x4A, 0x00, 0xE0), tr::lng_tgs_grad_violet(tr::now) },
+			{ QColor(0x0F, 0x9B, 0x8E), QColor(0x2C, 0x5F, 0x8A), tr::lng_tgs_grad_lagoon(tr::now) },
+			{ QColor(0xDA, 0x22, 0xFF), QColor(0xFF, 0x6A, 0x88), tr::lng_tgs_grad_berry(tr::now) },
+			{ QColor(0x43, 0x43, 0x50), QColor(0x1E, 0x1E, 0x26), tr::lng_tgs_grad_night(tr::now) },
+		});
+	AddLabel(content, tr::lng_tgs_grad_title(tr::now));
+	AddTiles(content, {
+		.count = int(gradients->size()),
+		.name = [=](int index) { return (*gradients)[index].name; },
+		.paintSwatch = [=](QPainter &p, QRect rect, int index) {
+			const auto &preset = (*gradients)[index];
+			auto fill = QLinearGradient(rect.topLeft(), rect.bottomRight());
+			fill.setColorAt(0., preset.from);
+			fill.setColorAt(1., preset.to);
+			p.setPen(Qt::NoPen);
+			p.setBrush(fill);
+			p.drawEllipse(rect);
+		},
+		.selected = [=] {
+			if (!Extera::Bool(u"tristegram_bubble_gradient"_q)) {
+				return -1;
+			}
+			const auto c1 = ConfigColor(u"tristegram_bubble_c1"_q, QColor());
+			const auto c2 = ConfigColor(u"tristegram_bubble_c2"_q, QColor());
+			for (auto i = 0; i != int(gradients->size()); ++i) {
+				if ((*gradients)[i].from == c1 && (*gradients)[i].to == c2) {
+					return i;
+				}
+			}
+			return -1;
+		},
+		.chosen = [=](int index) {
+			const auto &preset = (*gradients)[index];
+			Config().setString(u"tristegram_bubble_c1"_q, preset.from.name());
+			Config().setString(u"tristegram_bubble_c2"_q, preset.to.name());
+			Config().setBool(u"tristegram_bubble_gradient"_q, true);
+		},
+		.configKey = u"tristegram_bubble_c1"_q,
+	});
+	AddNote(content, tr::lng_tgs_grad_note(tr::now));
+	FillCustomThemes(content, controller);
 }
 
 // Vector icons for the animated wallpaper tiles: emoji glyphs look
@@ -2247,10 +2397,25 @@ void SettingsWindow::paintNav(QPainter &p) {
 			row.y() + (row.height() - tileSize) / 2.,
 			tileSize,
 			tileSize);
+		// Solid tiles with white icons, like in the main menu; the tile
+		// colors from the "Icons" section apply here too.
+		const auto custom = style::CurrentMenuTileColors();
 		p.setPen(Qt::NoPen);
-		p.setBrush(active
-			? QColor(255, 255, 255, 60)
-			: Alpha(item.color, 0.18));
+		if (active) {
+			p.setBrush(QColor(255, 255, 255, 60));
+		} else {
+			auto fill = QLinearGradient(
+				tile.topLeft(),
+				custom.from.isValid() ? tile.bottomRight() : tile.bottomLeft());
+			if (custom.from.isValid()) {
+				fill.setColorAt(0., custom.from);
+				fill.setColorAt(1., custom.to.isValid() ? custom.to : custom.from);
+			} else {
+				fill.setColorAt(0., item.color.lighter(118));
+				fill.setColorAt(1., item.color);
+			}
+			p.setBrush(fill);
+		}
 		p.drawRoundedRect(tile, Px(8), Px(8));
 		if (item.icon) {
 			const auto icon = item.icon;
@@ -2262,7 +2427,9 @@ void SettingsWindow::paintNav(QPainter &p) {
 				p,
 				QPoint(-icon->width() / 2, -icon->height() / 2),
 				width,
-				active ? QColor(255, 255, 255) : item.color);
+				(!active && custom.icon.isValid())
+					? custom.icon
+					: QColor(255, 255, 255));
 			p.restore();
 		}
 		p.setFont(active ? st::semiboldFont : st::normalFont);

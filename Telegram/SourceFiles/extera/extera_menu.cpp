@@ -549,6 +549,7 @@ void AddMessageMenuActions(
 	}
 	Plugins::AddMessageMenuItems(menu, item);
 	Tristegram::AddPlaylistMenuActions(menu, item);
+	Tristegram::AddShareImportActions(menu, item, controller);
 	if (Bool(u"menu_details"_q)) {
 		const auto action = menu->addAction(
 			tr::lng_extera_menu_details(tr::now),

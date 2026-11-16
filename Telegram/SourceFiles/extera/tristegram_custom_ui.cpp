@@ -11,6 +11,8 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "ui/effects/animations.h"
 #include "ui/painter.h"
 #include "ui/rp_widget.h"
+#include "ui/text/text.h"
+#include "window/themes/window_theme.h"
 #include "styles/style_basic.h"
 #include "styles/style_layers.h"
 
@@ -46,20 +48,30 @@ protected:
 
 private:
 	void refreshAmbient();
+	void paintBackground(QPainter &p, QRectF card) const;
 	void paintBubble(
 		QPainter &p,
 		QRectF rect,
-		const QString &text,
+		const Ui::Text::String &text,
 		bool out) const;
 
 	Ui::Animations::Simple _spin;
 	base::Timer _ambient;
+	Ui::Text::String _in;
+	Ui::Text::String _out;
 
 };
 
 LivePreview::LivePreview(QWidget *parent)
-: RpWidget(parent) {
+: RpWidget(parent)
+, _in(st::defaultTextStyle, tr::lng_tristegram_preview_in(tr::now))
+, _out(st::defaultTextStyle, tr::lng_tristegram_preview_out(tr::now)) {
 	resize(width(), Px(220));
+	// The real chat background, so a change can be seen right away.
+	Window::Theme::Background()->updates(
+	) | rpl::on_next([=](const Window::Theme::BackgroundUpdate &) {
+		update();
+	}, lifetime());
 	setCursor(style::cur_pointer);
 	_ambient.setCallback([=] { update(); });
 	refreshAmbient();
@@ -88,17 +100,46 @@ void LivePreview::mousePressEvent(QMouseEvent *e) {
 	}
 }
 
+void LivePreview::paintBackground(QPainter &p, QRectF card) const {
+	const auto background = Window::Theme::Background();
+	if (const auto color = background->colorForFill()) {
+		p.fillRect(card, *color);
+		return;
+	}
+	auto image = background->gradientForFill();
+	if (image.isNull()) {
+		image = background->prepared();
+	}
+	if (image.isNull()) {
+		p.fillRect(card, st::windowBgOver);
+		return;
+	}
+	// Fill the card keeping the proportions, like the chat does.
+	const auto ratio = card.width() / std::max(card.height(), 1.);
+	auto sw = double(image.width());
+	auto sh = double(image.height());
+	if (sw / std::max(sh, 1.) > ratio) {
+		sw = sh * ratio;
+	} else {
+		sh = sw / ratio;
+	}
+	p.drawImage(
+		card,
+		image,
+		QRectF((image.width() - sw) / 2., (image.height() - sh) / 2., sw, sh));
+}
+
 void LivePreview::paintBubble(
 		QPainter &p,
 		QRectF rect,
-		const QString &text,
+		const Ui::Text::String &text,
 		bool out) const {
 	const auto radius = std::min(
 		rect.height() / 2.,
 		double(Px(Extera::Int(u"tristegram_bubble_radius"_q))));
 	p.setPen(Qt::NoPen);
 	if (out) {
-		auto from = st::windowBgActive->c;
+		auto from = st::msgOutBg->c;
 		auto to = from;
 		if (Extera::Bool(u"tristegram_bubble_gradient"_q)) {
 			from = ConfigColor(u"tristegram_bubble_c1"_q, from);
@@ -109,15 +150,18 @@ void LivePreview::paintBubble(
 		fill.setColorAt(1., to);
 		p.setBrush(fill);
 	} else {
-		p.setBrush(Alpha(st::windowBg->c, 0.92));
+		p.setBrush(st::msgInBg);
 	}
 	p.drawRoundedRect(rect, radius, radius);
-	p.setFont(st::normalFont);
-	p.setPen(out ? st::windowFgActive : st::windowFg);
-	p.drawText(
-		rect.marginsRemoved(QMarginsF(Px(12), 0, Px(12), 0)),
-		Qt::AlignVCenter | Qt::AlignLeft,
-		text);
+	p.setPen(out ? st::historyTextOutFg : st::historyTextInFg);
+	const auto available = int(rect.width()) - 2 * Px(12);
+	text.draw(p, {
+		.position = QPoint(
+			int(rect.x()) + Px(12),
+			int(rect.y() + (rect.height() - st::defaultTextStyle.font->height) / 2.)),
+		.availableWidth = available,
+		.elisionLines = 1,
+	});
 }
 
 void LivePreview::paintEvent(QPaintEvent *e) {
@@ -134,19 +178,13 @@ void LivePreview::paintEvent(QPaintEvent *e) {
 	clip.addRoundedRect(card, radius, radius);
 	p.save();
 	p.setClipPath(clip);
-	p.fillRect(card, st::windowBgOver);
+	paintBackground(p, card);
 	auto glow1 = QRadialGradient(
-		QPointF(card.x() + card.width() * 0.3, card.y() + card.height() * 0.35),
-		card.width() * 0.45);
-	glow1.setColorAt(0., Alpha(style.from, 0.32));
+		QPointF(card.x() + card.width() * 0.2, card.y() + card.height() * 0.45),
+		card.width() * 0.3);
+	glow1.setColorAt(0., Alpha(style.from, 0.22));
 	glow1.setColorAt(1., Alpha(style.from, 0.));
 	p.fillRect(card, glow1);
-	auto glow2 = QRadialGradient(
-		QPointF(card.x() + card.width() * 0.8, card.y() + card.height() * 0.8),
-		card.width() * 0.4);
-	glow2.setColorAt(0., Alpha(style.to, 0.26));
-	glow2.setColorAt(1., Alpha(style.to, 0.));
-	p.fillRect(card, glow2);
 	p.restore();
 	p.setPen(QPen(Alpha(st::windowFg->c, 0.08), 1.));
 	p.setBrush(Qt::NoBrush);
@@ -181,19 +219,24 @@ void LivePreview::paintEvent(QPaintEvent *e) {
 	const auto right = card.x() + card.width() - Px(20);
 	if (right - left > Px(120)) {
 		const auto h = double(Px(36));
+		const auto inWidth = std::min(
+			right - left,
+			double(_in.maxWidth() + 2 * Px(12)));
 		const auto in = QRectF(
 			left,
 			card.y() + card.height() / 2. - h - Px(8),
-			std::min(right - left, double(Px(220))),
+			inWidth,
 			h);
-		paintBubble(p, in, tr::lng_tristegram_preview_in(tr::now), false);
-		const auto outWidth = std::min(right - left, double(Px(190)));
+		paintBubble(p, in, _in, false);
+		const auto outWidth = std::min(
+			right - left,
+			double(_out.maxWidth() + 2 * Px(12)));
 		const auto out = QRectF(
 			right - outWidth,
 			card.y() + card.height() / 2. + Px(8),
 			outWidth,
 			h);
-		paintBubble(p, out, tr::lng_tristegram_preview_out(tr::now), true);
+		paintBubble(p, out, _out, true);
 	}
 }
 

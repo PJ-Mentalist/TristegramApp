@@ -1427,7 +1427,9 @@ void TopBarWidget::updateControlsGeometry() {
 		_tristegramRecord->moveToRight(
 			_rightTaken,
 			(height() - _tristegramRecord->height()) / 2);
-		_tristegramRecord->setVisible(!_animatingMode);
+		_tristegramRecord->setVisible(!_animatingMode
+			&& !showSelectedActions()
+			&& !_selectedShown.animating());
 		_rightTaken += _tristegramRecord->width();
 	} else if (_tristegramRecord) {
 		_tristegramRecord->hide();
@@ -1483,7 +1485,11 @@ void TopBarWidget::updateControlsGeometry() {
 				pillWidth,
 				pillHeight);
 		}
-		_tristegramMusic->setVisible(fits && !_animatingMode);
+		// Hidden while messages are selected: Forward and Delete go there.
+		_tristegramMusic->setVisible(fits
+			&& !_animatingMode
+			&& !showSelectedActions()
+			&& !_selectedShown.animating());
 	} else if (_tristegramMusic) {
 		_tristegramMusic->hide();
 	}
