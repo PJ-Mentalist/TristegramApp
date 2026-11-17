@@ -637,9 +637,6 @@ void Application::run() {
 		return Extera::Bool(key);
 	});
 	Tristegram::Icons::Init(_lifetime);
-	Tristegram::Hotkeys::Init(_lifetime);
-	Tristegram::Activity::Init(_lifetime);
-	crl::on_main([] { Tristegram::StartMusicTracking(); });
 	Ui::Menu::Action::SetIconTiles(
 		Extera::Bool(u"tristegram_menu_tiles"_q));
 	Extera::Config::Instance().boolChanges(
@@ -678,6 +675,11 @@ void Application::run() {
 	startEmojiImageLoader();
 	startSystemDarkModeViewer();
 	Media::Player::start(_audio.get());
+
+	// Tristegram: these follow the player, it exists only from here.
+	Tristegram::Hotkeys::Init(_lifetime);
+	Tristegram::Activity::Init(_lifetime);
+	crl::on_main([] { Tristegram::StartMusicTracking(); });
 	Media::Encode::ClearStaleTempFiles();
 	Storage::ClearStaleArchiveFiles();
 	Webview::ClearStaleTemporaryStorage();
