@@ -273,6 +273,8 @@ private:
 	int _leftTaken = 0;
 	int _rightTaken = 0;
 	int _tristegramTextWidth = 0;
+	QString _tristegramActivityKind;
+	Ui::Animations::Basic _tristegramActivityAnimation;
 	object_ptr<Ui::RpWidget> _tristegramMusic = { nullptr };
 	object_ptr<Ui::RpWidget> _tristegramRecord = { nullptr };
 	float64 _titleShownRatio = 1.;

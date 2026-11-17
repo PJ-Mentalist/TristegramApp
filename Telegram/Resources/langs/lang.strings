@@ -10153,6 +10153,14 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_tristegram_bgs_title" = "Chat background";
 "lng_tristegram_preview_tap" = "Tap the logo to play the animation";
 "lng_tristegram_glass_menus" = "Frosted glass menus";
+"lng_tga_novel" = "plays the visual novel {name}";
+"lng_tga_games" = "My games";
+"lng_tga_games_remove" = "Remove";
+"lng_tga_games_name" = "Game name";
+"lng_tga_games_running" = "Add a game from open windows…";
+"lng_tga_games_file" = "Choose the game file…";
+"lng_tga_games_none" = "No open windows found.";
+"lng_tga_games_note" = "Games from Steam, Epic, GOG, itch.io and Ren'Py visual novels are found by themselves, even minimized. Add any other game here: start it and pick its window, or choose its .exe file.";
 "lng_tga_title" = "Activity";
 "lng_tga_share" = "Show what I am doing to Tristegram users";
 "lng_tga_show" = "Show the activity of others in chats";

@@ -111,6 +111,7 @@ constexpr auto kSaveDelay = crl::time(1000);
 		{ u"tristegram_activity_share"_q, true },
 		{ u"tristegram_activity_show"_q, true },
 		{ u"tristegram_activity_key"_q, QString() },
+		{ u"tristegram_activity_games"_q, QString() },
 		{ u"tristegram_font_size"_q, 0 },
 		{ u"tristegram_font_weight"_q, 0 },
 		{ u"tristegram_click_effect"_q, 1 },

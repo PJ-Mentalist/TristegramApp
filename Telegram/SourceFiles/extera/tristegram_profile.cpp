@@ -274,9 +274,8 @@ void PaintProfileGlow(QPainter &p, QRect area, QRect userpic) {
 }
 
 void PaintProfileRing(QPainter &p, QRect userpic) {
-	if (!Extera::Bool(u"tristegram_profile_glow"_q)) {
-		return;
-	}
+	// Tristegram: no frames around photos any more.
+	return;
 	auto hq = PainterHighQualityEnabler(p);
 	const auto colors = CurrentLogoStyle();
 	const auto width = Px(3);

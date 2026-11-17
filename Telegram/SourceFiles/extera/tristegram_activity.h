@@ -5,6 +5,9 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #pragma once
 
 #include <optional>
+#include <vector>
+
+class QPainter;
 
 namespace rpl {
 class lifetime;
@@ -30,7 +33,27 @@ void Init(rpl::lifetime &lifetime);
 // Fires the user id when a status arrives or changes.
 [[nodiscard]] rpl::producer<uint64> Updates();
 
-// "listens to Love Story - Taylor Swift" with an emoji in front.
+// "listens to Love Story - Taylor Swift".
 [[nodiscard]] QString Describe(const Status &status);
+
+// An animated icon for the kind of the activity, `now` moves it.
+void PaintIcon(
+	QPainter &p,
+	QRectF rect,
+	const QString &kind,
+	crl::time now);
+
+// Games the user picked: the exe file name in lower case and the name
+// to show, for games the app does not know.
+[[nodiscard]] std::vector<std::pair<QString, QString>> CustomGames();
+void AddCustomGame(const QString &exe, const QString &name);
+void RemoveCustomGame(const QString &exe);
+
+// Windows on the screen now, to pick a game from them.
+struct RunningWindow {
+	QString exe;
+	QString title;
+};
+[[nodiscard]] std::vector<RunningWindow> RunningWindows();
 
 } // namespace Tristegram::Activity

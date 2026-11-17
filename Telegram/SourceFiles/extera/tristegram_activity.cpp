@@ -10,6 +10,8 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "data/data_document.h"
 #include "extera/extera_config.h"
 #include "extera/tristegram_system_media.h"
+#include "extera/tristegram_logo.h"
+#include "ui/painter.h"
 #include "lang/lang_keys.h"
 #include "main/main_account.h"
 #include "main/main_domain.h"
@@ -17,7 +19,11 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "media/audio/media_audio.h"
 #include "media/player/media_player_instance.h"
 
+#include <QtCore/QDir>
 #include <QtCore/QFileInfo>
+#include <QtCore/QJsonArray>
+#include <QtGui/QPainterPath>
+#include <QtGui/QPolygonF>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
 #include <QtCore/QUrlQuery>
@@ -27,6 +33,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 
 #ifdef Q_OS_WIN
 #include <windows.h>
+#include <tlhelp32.h>
 #endif // Q_OS_WIN
 
 namespace Tristegram::Activity {
@@ -90,8 +97,28 @@ struct State {
 
 struct Foreground {
 	QString exe;
+	QString path;
 	QString title;
 };
+
+#ifdef Q_OS_WIN
+[[nodiscard]] QString ProcessPath(DWORD pid) {
+	auto result = QString();
+	const auto process = OpenProcess(
+		PROCESS_QUERY_LIMITED_INFORMATION,
+		FALSE,
+		pid);
+	if (process) {
+		wchar_t path[MAX_PATH * 2] = { 0 };
+		auto size = DWORD(MAX_PATH * 2);
+		if (QueryFullProcessImageNameW(process, 0, path, &size)) {
+			result = QString::fromWCharArray(path, int(size));
+		}
+		CloseHandle(process);
+	}
+	return result;
+}
+#endif // Q_OS_WIN
 
 [[nodiscard]] Foreground ForegroundApp() {
 #ifdef Q_OS_WIN
@@ -105,19 +132,8 @@ struct Foreground {
 		return {};
 	}
 	auto result = Foreground();
-	const auto process = OpenProcess(
-		PROCESS_QUERY_LIMITED_INFORMATION,
-		FALSE,
-		pid);
-	if (process) {
-		wchar_t path[MAX_PATH * 2] = { 0 };
-		auto size = DWORD(MAX_PATH * 2);
-		if (QueryFullProcessImageNameW(process, 0, path, &size)) {
-			result.exe = QFileInfo(
-				QString::fromWCharArray(path, int(size))).fileName().toLower();
-		}
-		CloseHandle(process);
-	}
+	result.path = QDir::fromNativeSeparators(ProcessPath(pid));
+	result.exe = QFileInfo(result.path).fileName().toLower();
 	wchar_t title[512] = { 0 };
 	const auto length = GetWindowTextW(window, title, 511);
 	result.title = QString::fromWCharArray(title, std::max(length, 0));
@@ -187,6 +203,154 @@ struct Foreground {
 [[nodiscard]] QString ProjectFromTitle(const QString &title) {
 	const auto parts = title.split(u" - "_q, Qt::SkipEmptyParts);
 	return (parts.size() >= 3) ? parts[parts.size() - 2].trimmed() : QString();
+}
+
+[[nodiscard]] base::flat_map<QString, QString> LoadCustomGames() {
+	auto result = base::flat_map<QString, QString>();
+	const auto object = QJsonDocument::fromJson(
+		Extera::String(u"tristegram_activity_games"_q).toUtf8()).object();
+	for (auto i = object.begin(); i != object.end(); ++i) {
+		result.emplace(i.key().toLower(), i.value().toString());
+	}
+	return result;
+}
+
+void SaveCustomGames(const base::flat_map<QString, QString> &games) {
+	auto object = QJsonObject();
+	for (const auto &[exe, name] : games) {
+		object.insert(exe, name);
+	}
+	Extera::Config::Instance().setString(
+		u"tristegram_activity_games"_q,
+		QString::fromUtf8(
+			QJsonDocument(object).toJson(QJsonDocument::Compact)));
+}
+
+struct Game {
+	QString name;
+	bool novel = false;
+};
+
+// The folder right after a store's games folder is the game name:
+// steamapps/common/<Game>, Epic Games/<Game>, GOG Games/<Game> and so on.
+[[nodiscard]] QString StoreGameName(const QString &path) {
+	const auto lower = path.toLower();
+	for (const auto marker : {
+			"/steamapps/common/",
+			"/epic games/",
+			"/gog games/",
+			"/gog galaxy/games/",
+			"/itch/apps/",
+			"/xboxgames/",
+			"/riot games/",
+			"/ubisoft game launcher/games/",
+			"/ea games/",
+			"/battle.net/" }) {
+		const auto at = lower.indexOf(QString::fromLatin1(marker));
+		if (at < 0) {
+			continue;
+		}
+		const auto start = at + int(qstrlen(marker));
+		const auto end = path.indexOf('/', start);
+		const auto name = path.mid(start, (end > start) ? (end - start) : -1);
+		if (!name.isEmpty()
+			&& !name.contains(u"steamworks"_q, Qt::CaseInsensitive)
+			&& !name.contains(u"redist"_q, Qt::CaseInsensitive)) {
+			return name;
+		}
+	}
+	return QString();
+}
+
+// Ren'Py visual novels have a "renpy" folder next to the exe.
+[[nodiscard]] bool IsRenPy(const QString &path) {
+	const auto folder = QFileInfo(path).absolutePath();
+	return QDir(folder + u"/renpy"_q).exists()
+		|| (QDir(folder + u"/game"_q).exists()
+			&& QFileInfo::exists(folder + u"/lib"_q));
+}
+
+[[nodiscard]] std::optional<Game> DetectGame(
+		const QString &exe,
+		const QString &path,
+		const QString &title) {
+	if (exe.isEmpty()) {
+		return std::nullopt;
+	}
+	const auto custom = LoadCustomGames();
+	if (const auto i = custom.find(exe); i != end(custom)) {
+		return Game{ .name = i->second };
+	}
+	if (const auto known = GameApp(exe); !known.isEmpty()) {
+		return Game{ .name = known };
+	}
+	if (exe.contains(u"crashhandler"_q)
+		|| exe.contains(u"crashreport"_q)
+		|| exe.contains(u"launcher"_q)
+		|| exe.contains(u"unins"_q)) {
+		return std::nullopt;
+	}
+	if (!path.isEmpty() && IsRenPy(path)) {
+		const auto name = title.trimmed().isEmpty()
+			? QFileInfo(path).completeBaseName()
+			: title.trimmed();
+		return Game{ .name = name, .novel = true };
+	}
+	if (const auto store = StoreGameName(path); !store.isEmpty()) {
+		return Game{ .name = store };
+	}
+	return std::nullopt;
+}
+
+// A game running in the background, minimized or on another screen.
+[[nodiscard]] std::optional<Game> BackgroundGame() {
+#ifdef Q_OS_WIN
+	const auto snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+	if (snapshot == INVALID_HANDLE_VALUE) {
+		return std::nullopt;
+	}
+	auto entry = PROCESSENTRY32W();
+	entry.dwSize = sizeof(entry);
+	auto result = std::optional<Game>();
+	const auto custom = LoadCustomGames();
+	if (Process32FirstW(snapshot, &entry)) {
+		do {
+			const auto exe = QString::fromWCharArray(entry.szExeFile).toLower();
+			if (custom.contains(exe) || !GameApp(exe).isEmpty()) {
+				result = DetectGame(exe, QString(), QString());
+				break;
+			}
+		} while (Process32NextW(snapshot, &entry));
+	}
+	if (!result && Process32FirstW(snapshot, &entry)) {
+		do {
+			const auto exe = QString::fromWCharArray(entry.szExeFile).toLower();
+			if (exe.endsWith(u".exe"_q) && entry.th32ProcessID > 4) {
+				const auto path = QDir::fromNativeSeparators(
+					ProcessPath(entry.th32ProcessID));
+				if (!StoreGameName(path).isEmpty()) {
+					result = DetectGame(exe, path, QString());
+					if (result) {
+						break;
+					}
+				}
+			}
+		} while (Process32NextW(snapshot, &entry));
+	}
+	CloseHandle(snapshot);
+	return result;
+#else // Q_OS_WIN
+	return std::nullopt;
+#endif // Q_OS_WIN
+}
+
+[[nodiscard]] Status GameStatus(const Game &game) {
+	return Status{
+		.kind = u"game"_q,
+		.title = game.name,
+		.subtitle = game.novel ? u"novel"_q : QString(),
+		.app = game.name,
+	};
 }
 
 [[nodiscard]] std::optional<Status> TristegramMusic() {
@@ -260,8 +424,11 @@ void Report() {
 		return;
 	}
 	const auto foreground = ForegroundApp();
-	if (const auto game = GameApp(foreground.exe); !game.isEmpty()) {
-		Send({ .kind = u"game"_q, .title = game, .app = game });
+	if (const auto game = DetectGame(
+			foreground.exe,
+			foreground.path,
+			foreground.title)) {
+		Send(GameStatus(*game));
 		return;
 	}
 	if (const auto coding = CodingApp(foreground.exe); !coding.isEmpty()) {
@@ -270,6 +437,10 @@ void Report() {
 			.title = ProjectFromTitle(foreground.title),
 			.app = coding,
 		});
+		return;
+	}
+	if (const auto game = BackgroundGame()) {
+		Send(GameStatus(*game));
 		return;
 	}
 	state.reporting = true;
@@ -368,28 +539,162 @@ rpl::producer<uint64> Updates() {
 QString Describe(const Status &status) {
 	const auto both = status.subtitle.isEmpty()
 		? status.title
-		: (status.title + u" — "_q + status.subtitle);
+		: (status.title + u" \u2014 "_q + status.subtitle);
 	if (status.kind == u"music"_q) {
-		return QString::fromUtf8("\xF0\x9F\x8E\xA7 ")
-			+ tr::lng_tga_music(tr::now, lt_name, both);
+		return tr::lng_tga_music(tr::now, lt_name, both);
 	} else if (status.kind == u"video"_q) {
-		return QString::fromUtf8("\xF0\x9F\x8E\xAC ")
-			+ tr::lng_tga_video(tr::now, lt_name, both);
+		return tr::lng_tga_video(tr::now, lt_name, both);
 	} else if (status.kind == u"coding"_q) {
-		return QString::fromUtf8("\xF0\x9F\x92\xBB ")
-			+ (status.title.isEmpty()
-				? tr::lng_tga_coding_app(tr::now, lt_name, status.app)
-				: tr::lng_tga_coding(
-					tr::now,
-					lt_name,
-					status.title,
-					lt_app,
-					status.app));
+		return status.title.isEmpty()
+			? tr::lng_tga_coding_app(tr::now, lt_name, status.app)
+			: tr::lng_tga_coding(
+				tr::now,
+				lt_name,
+				status.title,
+				lt_app,
+				status.app);
 	} else if (status.kind == u"game"_q) {
-		return QString::fromUtf8("\xF0\x9F\x8E\xAE ")
-			+ tr::lng_tga_game(tr::now, lt_name, status.title);
+		return (status.subtitle == u"novel"_q)
+			? tr::lng_tga_novel(tr::now, lt_name, status.title)
+			: tr::lng_tga_game(tr::now, lt_name, status.title);
 	}
 	return QString();
+}
+
+void PaintIcon(
+		QPainter &p,
+		QRectF rect,
+		const QString &kind,
+		crl::time now) {
+	auto hq = PainterHighQualityEnabler(p);
+	const auto style = CurrentLogoStyle();
+	auto fill = QLinearGradient(rect.topLeft(), rect.bottomRight());
+	fill.setColorAt(0., style.from);
+	fill.setColorAt(1., style.to);
+	const auto t = now / 1000.;
+	const auto c = rect.center();
+	const auto s = rect.width() / 2.;
+	p.save();
+	p.setPen(Qt::NoPen);
+	p.setBrush(fill);
+	if (kind == u"music"_q) {
+		// Four bars jumping to the beat.
+		const auto w = rect.width() / 7.;
+		for (auto i = 0; i != 4; ++i) {
+			const auto phase = 0.5 + 0.5 * std::sin(t * (7. + i * 1.7) + i * 1.3);
+			const auto h = rect.height() * (0.25 + 0.75 * phase);
+			p.drawRoundedRect(
+				QRectF(rect.x() + w * (0.5 + i * 1.7), rect.bottom() - h, w, h),
+				w / 2.,
+				w / 2.);
+		}
+	} else if (kind == u"video"_q) {
+		// A screen with a pulsing play sign.
+		const auto screen = rect.marginsRemoved(QMarginsF(0, s * 0.25, 0, s * 0.25));
+		p.drawRoundedRect(screen, s * 0.25, s * 0.25);
+		const auto pulse = 0.85 + 0.15 * std::sin(t * 5.);
+		auto play = QPainterPath();
+		play.moveTo(c.x() - s * 0.25 * pulse, c.y() - s * 0.35 * pulse);
+		play.lineTo(c.x() + s * 0.38 * pulse, c.y());
+		play.lineTo(c.x() - s * 0.25 * pulse, c.y() + s * 0.35 * pulse);
+		play.closeSubpath();
+		p.setBrush(QColor(255, 255, 255));
+		p.drawPath(play);
+	} else if (kind == u"coding"_q) {
+		// Angle brackets with a blinking cursor between them.
+		auto pen = QPen(QBrush(fill), std::max(1.5, s * 0.22));
+		pen.setCapStyle(Qt::RoundCap);
+		pen.setJoinStyle(Qt::RoundJoin);
+		p.setPen(pen);
+		p.setBrush(Qt::NoBrush);
+		p.drawPolyline(QPolygonF({
+			QPointF(c.x() - s * 0.45, c.y() - s * 0.5),
+			QPointF(c.x() - s * 0.95, c.y()),
+			QPointF(c.x() - s * 0.45, c.y() + s * 0.5) }));
+		p.drawPolyline(QPolygonF({
+			QPointF(c.x() + s * 0.45, c.y() - s * 0.5),
+			QPointF(c.x() + s * 0.95, c.y()),
+			QPointF(c.x() + s * 0.45, c.y() + s * 0.5) }));
+		if (std::fmod(t, 1.) < 0.55) {
+			p.drawLine(
+				QPointF(c.x(), c.y() - s * 0.55),
+				QPointF(c.x(), c.y() + s * 0.55));
+		}
+	} else if (kind == u"game"_q) {
+		// A gamepad rocking a little, its buttons light up in turn.
+		p.translate(c);
+		p.rotate(8. * std::sin(t * 3.));
+		auto pad = QPainterPath();
+		pad.addRoundedRect(QRectF(-s, -s * 0.5, s * 2, s * 1.1), s * 0.5, s * 0.5);
+		p.drawPath(pad);
+		p.setBrush(QColor(255, 255, 255));
+		const auto dot = s * 0.14;
+		p.drawRect(QRectF(-s * 0.62, -dot / 2., dot * 3, dot));
+		p.drawRect(QRectF(-s * 0.62 + dot, -dot * 1.5, dot, dot * 3));
+		for (auto i = 0; i != 2; ++i) {
+			const auto on = (int(t * 3.) % 2) == i;
+			p.setBrush(QColor(255, 255, 255, on ? 255 : 120));
+			p.drawEllipse(QPointF(s * (0.35 + i * 0.3), -s * 0.08 + i * s * 0.2), dot, dot);
+		}
+	}
+	p.restore();
+}
+
+std::vector<std::pair<QString, QString>> CustomGames() {
+	auto result = std::vector<std::pair<QString, QString>>();
+	for (const auto &[exe, name] : LoadCustomGames()) {
+		result.emplace_back(exe, name);
+	}
+	return result;
+}
+
+void AddCustomGame(const QString &exe, const QString &name) {
+	auto games = LoadCustomGames();
+	games[exe.toLower()] = name;
+	SaveCustomGames(games);
+	crl::on_main([] { Report(); });
+}
+
+void RemoveCustomGame(const QString &exe) {
+	auto games = LoadCustomGames();
+	games.remove(exe.toLower());
+	SaveCustomGames(games);
+}
+
+std::vector<RunningWindow> RunningWindows() {
+	auto result = std::vector<RunningWindow>();
+#ifdef Q_OS_WIN
+	EnumWindows([](HWND window, LPARAM data) -> BOOL {
+		const auto list = reinterpret_cast<std::vector<RunningWindow>*>(data);
+		if (!IsWindowVisible(window) || GetWindow(window, GW_OWNER)) {
+			return TRUE;
+		}
+		wchar_t title[512] = { 0 };
+		const auto length = GetWindowTextW(window, title, 511);
+		if (length <= 0) {
+			return TRUE;
+		}
+		auto pid = DWORD(0);
+		GetWindowThreadProcessId(window, &pid);
+		const auto exe = QFileInfo(ProcessPath(pid)).fileName().toLower();
+		if (exe.isEmpty()
+			|| exe == u"explorer.exe"_q
+			|| exe == u"tristegram.exe"_q
+			|| exe == u"telegram.exe"_q
+			|| exe == u"textinputhost.exe"_q
+			|| exe == u"applicationframehost.exe"_q) {
+			return TRUE;
+		}
+		const auto already = ranges::any_of(*list, [&](const RunningWindow &w) {
+			return w.exe == exe;
+		});
+		if (!already) {
+			list->push_back({ exe, QString::fromWCharArray(title, length) });
+		}
+		return TRUE;
+	}, reinterpret_cast<LPARAM>(&result));
+#endif // Q_OS_WIN
+	return result;
 }
 
 } // namespace Tristegram::Activity

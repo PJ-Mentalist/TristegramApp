@@ -11,6 +11,8 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "core/core_settings.h"
 #include "extera/extera_config.h"
 #include "extera/tristegram_custom.h"
+#include "extera/tristegram_activity.h"
+#include "core/file_utilities.h"
 #include "extera/tristegram_cleaner.h"
 #include "extera/tristegram_custom_ui.h"
 #include "extera/tristegram_folders.h"
@@ -54,6 +56,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "styles/style_filter_icons.h"
 #include "styles/style_settings.h"
 
+#include <QtCore/QFileInfo>
 #include <QtGui/QClipboard>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QMouseEvent>
@@ -672,7 +675,7 @@ void AddAvatarPreview(not_null<Ui::VerticalLayout*> content) {
 			Px(18));
 		const auto style = CurrentLogoStyle();
 		const auto corners = std::clamp(Extera::Int(u"avatar_corners"_q), 0, 28);
-		const auto ring = Extera::Int(u"tristegram_avatar_ring"_q);
+		const auto ring = 0; // Tristegram: frames are gone.
 		const auto size = Px(64);
 		const auto radius = size / 2. * corners / 28.;
 		for (auto i = 0; i != 3; ++i) {
@@ -821,7 +824,6 @@ void FillLook(
 		AddConfigToggle(group, tr::lng_tgs_v_badges(tr::now), u"tristegram_gradient_badges"_q);
 		AddConfigToggle(group, tr::lng_tgs_v_dates(tr::now), u"tristegram_date_capsules"_q);
 		AddConfigToggle(group, tr::lng_tgs_v_active(tr::now), u"tristegram_gradient_active_chat"_q);
-		AddConfigToggle(group, tr::lng_tgs_v_online(tr::now), u"tristegram_online_ring"_q);
 		AddConfigToggle(group, tr::lng_tgs_v_send(tr::now), u"tristegram_send_capsule"_q);
 		AddConfigToggle(group, tr::lng_tgs_v_files(tr::now), u"tristegram_file_tiles"_q);
 		AddConfigToggle(group, tr::lng_tgs_v_appear(tr::now), u"tristegram_message_appear"_q);
@@ -1554,35 +1556,6 @@ void FillAnimations(not_null<Ui::VerticalLayout*> content) {
 	}
 	AddNote(content, tr::lng_tgs_animations_note(tr::now));
 
-	// Tristegram: effects where you click and where you type.
-	AddLabel(content, tr::lng_tgs_click_effect(tr::now));
-	AddSegments(
-		content,
-		{
-			tr::lng_tgs_effect_none(tr::now),
-			tr::lng_tgs_effect_ring(tr::now),
-			tr::lng_tgs_effect_sparks(tr::now),
-			tr::lng_tgs_effect_hearts(tr::now),
-			tr::lng_tgs_effect_confetti(tr::now),
-		},
-		std::clamp(Extera::Int(u"tristegram_click_effect"_q), 0, 4),
-		[](int index) {
-			Config().setInt(u"tristegram_click_effect"_q, index);
-		});
-	AddLabel(content, tr::lng_tgs_type_effect(tr::now));
-	AddSegments(
-		content,
-		{
-			tr::lng_tgs_effect_none(tr::now),
-			tr::lng_tgs_effect_sparks(tr::now),
-			tr::lng_tgs_effect_hearts(tr::now),
-			tr::lng_tgs_effect_confetti(tr::now),
-		},
-		std::clamp(Extera::Int(u"tristegram_type_effect"_q), 0, 3),
-		[](int index) {
-			Config().setInt(u"tristegram_type_effect"_q, index);
-		});
-	AddNote(content, tr::lng_tgs_effects_note(tr::now));
 }
 
 void FillAvatars(not_null<Ui::VerticalLayout*> content) {
@@ -1601,19 +1574,6 @@ void FillAvatars(not_null<Ui::VerticalLayout*> content) {
 			Config().setInt(
 				u"avatar_corners"_q,
 				(index == 0) ? 28 : (index == 1) ? 12 : 4);
-		});
-	AddLabel(content, tr::lng_tgs_frame(tr::now));
-	AddSegments(
-		content,
-		{
-			tr::lng_tristegram_ring_none(tr::now),
-			tr::lng_tristegram_ring_thin(tr::now),
-			tr::lng_tristegram_ring_accent(tr::now),
-			tr::lng_tristegram_ring_gradient(tr::now),
-		},
-		std::clamp(Extera::Int(u"tristegram_avatar_ring"_q), 0, 3),
-		[](int index) {
-			Config().setInt(u"tristegram_avatar_ring"_q, index);
 		});
 	AddLabel(content, tr::lng_tgs_where(tr::now));
 	{
@@ -2057,6 +2017,78 @@ void FillPrivacy(
 			u"tristegram_activity_show"_q);
 	}
 	AddNote(content, tr::lng_tga_note(tr::now));
+	AddLabel(content, tr::lng_tga_games(tr::now));
+	{
+		const auto group = AddGroup(content);
+		const auto list = group->add(object_ptr<Ui::VerticalLayout>(group));
+		const auto refill = list->lifetime().make_state<Fn<void()>>();
+		*refill = [=] {
+			list->clear();
+			for (const auto &[exe, name] : Tristegram::Activity::CustomGames()) {
+				const auto file = exe;
+				AddActionRow(
+					list,
+					name,
+					[=] { return tr::lng_tga_games_remove(tr::now); },
+					[=] {
+						Tristegram::Activity::RemoveCustomGame(file);
+						crl::on_main(list, [=] { (*refill)(); });
+					});
+			}
+		};
+		(*refill)();
+		const auto addGame = [=](QString exe, QString name) {
+			AskText(
+				controller,
+				tr::lng_tga_games_name(tr::now),
+				tr::lng_tga_games_name(tr::now),
+				name,
+				[=](QString value) {
+					Tristegram::Activity::AddCustomGame(exe, value);
+					(*refill)();
+				});
+		};
+		AddActionRow(group, tr::lng_tga_games_running(tr::now), nullptr, [=] {
+			const auto windows = Tristegram::Activity::RunningWindows();
+			if (windows.empty()) {
+				controller->showToast(tr::lng_tga_games_none(tr::now));
+				return;
+			}
+			auto options = std::vector<QString>();
+			for (const auto &window : windows) {
+				options.push_back(window.title + u"  ("_q + window.exe + ')');
+			}
+			controller->show(Box([=](not_null<Ui::GenericBox*> box) {
+				SingleChoiceBox(box, {
+					.title = tr::lng_tga_games_running(),
+					.options = options,
+					.initialSelection = -1,
+					.callback = [=](int index) {
+						if (index >= 0 && index < int(windows.size())) {
+							const auto window = windows[index];
+							crl::on_main(list, [=] {
+								addGame(window.exe, window.title);
+							});
+						}
+					},
+				});
+			}));
+		});
+		AddActionRow(group, tr::lng_tga_games_file(tr::now), nullptr, [=] {
+			FileDialog::GetOpenPath(
+				Core::App().getFileDialogParent(),
+				tr::lng_tga_games_file(tr::now),
+				u"Games (*.exe);;"_q + FileDialog::AllFilesFilter(),
+				crl::guard(list, [=](FileDialog::OpenResult &&result) {
+					if (result.paths.isEmpty()) {
+						return;
+					}
+					const auto info = QFileInfo(result.paths.front());
+					addGame(info.fileName().toLower(), info.completeBaseName());
+				}));
+		});
+	}
+	AddNote(content, tr::lng_tga_games_note(tr::now));
 	{
 		const auto group = AddGroup(content);
 		AddConfigToggle(group, tr::lng_tgs_hide_phone(tr::now), u"hide_phone"_q);

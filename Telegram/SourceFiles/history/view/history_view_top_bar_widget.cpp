@@ -914,6 +914,18 @@ void TopBarWidget::paintStatus(
 		p.setPen(st::historyStatusFg);
 		p.drawTextLeft(left, top, outerWidth, _customTitleText);
 	} else {
+		if (!_tristegramActivityKind.isEmpty()) {
+			// Tristegram: an animated icon of the activity.
+			const auto size = st::dialogsTextFont->height;
+			Tristegram::Activity::PaintIcon(
+				p,
+				QRectF(left, top, size, size).marginsRemoved(
+					QMarginsF(1., 2., 1., 1.)),
+				_tristegramActivityKind,
+				crl::now());
+			left += size + st::dialogsTextFont->spacew;
+			availableWidth -= size + st::dialogsTextFont->spacew;
+		}
 		p.setPen(_titlePeerTextOnline
 			? st::historyStatusFgActive
 			: st::historyStatusFg);
@@ -2132,6 +2144,7 @@ void TopBarWidget::updateOnlineDisplay() {
 	QString text;
 	const auto now = base::unixtime::now();
 	bool titlePeerTextOnline = false;
+	auto activityKind = QString();
 	if (const auto user = peer->asUser()) {
 		if (session().supportMode()
 			&& !session().supportHelper().infoCurrent(user).text.empty()) {
@@ -2142,6 +2155,7 @@ void TopBarWidget::updateOnlineDisplay() {
 			// Tristegram: what this Tristegram user does right now.
 			text = Tristegram::Activity::Describe(*activity);
 			titlePeerTextOnline = true;
+			activityKind = activity->kind;
 		} else {
 			text = Data::OnlineText(user, now);
 			titlePeerTextOnline = Data::OnlineTextActive(user, now);
@@ -2222,6 +2236,16 @@ void TopBarWidget::updateOnlineDisplay() {
 		} else {
 			text = channel->isMegagroup() ? tr::lng_group_status(tr::now) : tr::lng_channel_status(tr::now);
 		}
+	}
+	if (_tristegramActivityKind != activityKind) {
+		_tristegramActivityKind = activityKind;
+		if (activityKind.isEmpty()) {
+			_tristegramActivityAnimation.stop();
+		} else if (!_tristegramActivityAnimation.animating()) {
+			_tristegramActivityAnimation.init([=] { update(); });
+			_tristegramActivityAnimation.start();
+		}
+		update();
 	}
 	if (_titlePeerText.toString() != text) {
 		_titlePeerText.setText(st::dialogsTextStyle, text);

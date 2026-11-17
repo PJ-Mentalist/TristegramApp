@@ -355,7 +355,8 @@ void OnType(QWidget *focused) {
 } // namespace
 
 void InstallInputEffects() {
-	static auto installed = false;
+	// Tristegram: click and typing effects are turned off for good.
+	static auto installed = true;
 	if (installed) {
 		return;
 	}
