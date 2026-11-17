@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/settings_common.h"
 #include "extera/extera_config.h"
+#include "extera/tristegram_icons.h"
 
 #include "base/timer.h"
 #include "lottie/lottie_icon.h"
@@ -445,7 +446,16 @@ Icon::Icon(IconDescriptor descriptor) : _icon(descriptor.icon) {
 		_backgroundBrush.emplace(radius, std::move(*brush));
 	} else if (descriptor.type == IconType::Rounded
 		&& Extera::Bool(u"tristegram_ios_icons"_q)) {
-		const auto [from, to] = TristegramIconColors(descriptor.icon);
+		// The tile colors chosen for the main menu and settings, or the
+		// colorful default for every icon.
+		const auto custom = Tristegram::Icons::TileColors(
+			Tristegram::Icons::TileArea::Main);
+		auto [from, to] = TristegramIconColors(descriptor.icon);
+		if (custom.from.isValid()) {
+			from = custom.from;
+			to = custom.to.isValid() ? custom.to : custom.from;
+			_glyphColor = custom.icon;
+		}
 		const auto size = _icon->size();
 		auto gradient = QLinearGradient(
 			QPointF(0, 0),
@@ -490,7 +500,7 @@ void Icon::paint(QPainter &p, int x, int y) const {
 			p,
 			QPoint(x, y),
 			2 * x + _icon->width(),
-			QColor(255, 255, 255));
+			_glyphColor.isValid() ? _glyphColor : QColor(255, 255, 255));
 		return;
 	}
 	_icon->paint(p, { x, y }, 2 * x + _icon->width());

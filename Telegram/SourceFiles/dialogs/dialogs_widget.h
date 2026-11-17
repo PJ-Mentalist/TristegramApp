@@ -318,6 +318,7 @@ private:
 	void startScrollUpButtonAnimation(bool shown);
 	void updateScrollUpPosition();
 	void updateLockUnlockPosition();
+	void showTristegramChatTools();
 	void updateSuggestions(anim::type animated);
 	void processSearchFocusChange();
 	void closeSuggestions();

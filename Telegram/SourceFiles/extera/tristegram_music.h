@@ -24,6 +24,10 @@ namespace Tristegram {
 // that can be created, renamed and deleted.
 void ShowMusicWindow(not_null<Window::SessionController*> controller);
 
+// Recent songs, the playlist queue and the listening statistics follow
+// the player from the start of the app.
+void StartMusicTracking();
+
 // A capsule for the chat header: a small spinning disc with the track,
 // play / pause and next. A click opens the music window.
 [[nodiscard]] object_ptr<Ui::RpWidget> CreateNowPlayingPill(

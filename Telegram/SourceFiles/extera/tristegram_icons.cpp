@@ -29,7 +29,16 @@ std::vector<Entry> Entries;
 std::array<style::IconEffect, kAreaCount * 2> Effects;
 std::array<bool, kAreaCount * 2> Active = {};
 unsigned int KeySeed = 0;
-style::MenuTileColors Tiles;
+std::array<style::MenuTileColors, kTileAreaCount> Tiles;
+
+[[nodiscard]] QString TileAreaName(TileArea area) {
+	switch (area) {
+	case TileArea::Context: return u"context"_q;
+	case TileArea::Main: return u"main"_q;
+	case TileArea::Settings: return u"side"_q;
+	}
+	return u"context"_q;
+}
 
 [[nodiscard]] QString AreaName(Area area) {
 	switch (area) {
@@ -125,12 +134,21 @@ void Rebuild() {
 		Effects[i * 2 + 1] = over;
 		Active[i * 2 + 1] = active;
 	}
-	{
+	for (auto area = 0; area != kTileAreaCount; ++area) {
 		// Tiles under menu icons: 0 keeps the colorful default.
-		const auto c1 = ColorValue(u"tristegram_tiles_c1"_q, QColor(0xF0, 0x7A, 0x0C));
-		const auto c2 = ColorValue(u"tristegram_tiles_c2"_q, QColor(0xE8, 0x31, 0x8A));
+		const auto own = Extera::Int(TileAreaKey(TileArea(area), u"mode"_q));
+		const auto key = [&](const QString &suffix) {
+			return own
+				? TileAreaKey(TileArea(area), suffix)
+				: (u"tristegram_tiles_"_q + suffix);
+		};
+		const auto c1 = ColorValue(key(u"c1"_q), QColor(0xF0, 0x7A, 0x0C));
+		const auto c2 = ColorValue(key(u"c2"_q), QColor(0xE8, 0x31, 0x8A));
+		const auto mode = own
+			? (own - 1)
+			: Extera::Int(u"tristegram_tiles_mode"_q);
 		auto tiles = style::MenuTileColors();
-		switch (Extera::Int(u"tristegram_tiles_mode"_q)) {
+		switch (mode) {
 		case 1:
 			tiles.from = st::windowActiveTextFg->c.lighter(112);
 			tiles.to = st::windowActiveTextFg->c;
@@ -153,8 +171,12 @@ void Rebuild() {
 			tiles.icon = st::windowFg->c;
 			break;
 		}
-		Tiles = tiles;
+		Tiles[area] = tiles;
 	}
+	style::SetIconLook(std::clamp(
+		Extera::Int(GlobalKey(u"look"_q)),
+		0,
+		style::kIconLookCount - 1));
 	style::RefreshIconEffects();
 	for (const auto widget : QApplication::topLevelWidgets()) {
 		widget->update();
@@ -165,6 +187,14 @@ void Rebuild() {
 
 QString GlobalKey(const QString &suffix) {
 	return u"tristegram_icons_"_q + suffix;
+}
+
+QString TileAreaKey(TileArea area, const QString &suffix) {
+	return u"tristegram_tiles_"_q + TileAreaName(area) + '_' + suffix;
+}
+
+style::MenuTileColors TileColors(TileArea area) {
+	return Tiles[int(area)];
 }
 
 QString AreaKey(Area area, const QString &suffix) {
@@ -186,7 +216,9 @@ void Init(rpl::lifetime &lifetime) {
 		}
 		return nullptr;
 	});
-	style::SetMenuTileProvider([] { return Tiles; });
+	style::SetMenuTileProvider([] {
+		return Tiles[int(TileArea::Context)];
+	});
 	Extera::Config::Instance().changes(
 	) | rpl::filter([](const QString &key) {
 		return key.startsWith(u"tristegram_icons_"_q)

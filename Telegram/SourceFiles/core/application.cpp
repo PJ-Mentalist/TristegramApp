@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "extera/tristegram_icons.h"
 #include "extera/tristegram_hotkeys.h"
+#include "extera/tristegram_music.h"
 
 #include "ui/widgets/scroll_area.h"
 #include "ui/widgets/side_bar_button.h"
@@ -636,6 +637,7 @@ void Application::run() {
 	});
 	Tristegram::Icons::Init(_lifetime);
 	Tristegram::Hotkeys::Init(_lifetime);
+	crl::on_main([] { Tristegram::StartMusicTracking(); });
 	Ui::Menu::Action::SetIconTiles(
 		Extera::Bool(u"tristegram_menu_tiles"_q));
 	Extera::Config::Instance().boolChanges(

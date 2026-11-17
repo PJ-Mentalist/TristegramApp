@@ -1695,6 +1695,41 @@ void FillIcons(
 		not_null<Window::SessionController*> controller) {
 	using namespace Tristegram::Icons;
 	AddIconsPreview(content);
+	AddLabel(content, tr::lng_tgs_look_title(tr::now));
+	{
+		const auto group = AddGroup(content);
+		const auto texts = std::vector<QString>{
+			tr::lng_tgs_look_classic(tr::now),
+			tr::lng_tgs_look_pixel(tr::now),
+			tr::lng_tgs_look_retro(tr::now),
+			tr::lng_tgs_look_neon(tr::now),
+			tr::lng_tgs_look_outline(tr::now),
+			tr::lng_tgs_look_3d(tr::now),
+			tr::lng_tgs_look_japan(tr::now),
+			tr::lng_tgs_look_sticker(tr::now),
+		};
+		const auto key = GlobalKey(u"look"_q);
+		const auto current = [=] {
+			return std::clamp(Extera::Int(key), 0, int(texts.size()) - 1);
+		};
+		AddActionRow(
+			group,
+			tr::lng_tgs_look_row(tr::now),
+			[=] { return texts[current()]; },
+			[=] {
+				controller->show(Box([=](not_null<Ui::GenericBox*> box) {
+					SingleChoiceBox(box, {
+						.title = tr::lng_tgs_look_title(),
+						.options = texts,
+						.initialSelection = current(),
+						.callback = [=](int index) {
+							Config().setInt(key, index);
+						},
+					});
+				}));
+			});
+	}
+	AddNote(content, tr::lng_tgs_look_note(tr::now));
 	AddLabel(content, tr::lng_tgs_icons_style(tr::now));
 	AddSegments(
 		content,
@@ -1809,6 +1844,66 @@ void FillIcons(
 			QColor(0xE8, 0x31, 0x8A));
 	}
 	AddNote(content, tr::lng_tgs_tiles_note(tr::now));
+
+	// Each place with tiles can have its own colors.
+	using Tristegram::Icons::TileArea;
+	const auto tileAreas = std::vector<std::pair<TileArea, QString>>{
+		{ TileArea::Main, tr::lng_tgs_tiles_main(tr::now) },
+		{ TileArea::Context, tr::lng_tgs_tiles_context(tr::now) },
+		{ TileArea::Settings, tr::lng_tgs_tiles_side(tr::now) },
+	};
+	for (const auto &[area, title] : tileAreas) {
+		AddLabel(content, title);
+		const auto group = AddGroup(content);
+		const auto modeKey = Tristegram::Icons::TileAreaKey(area, u"mode"_q);
+		const auto texts = std::vector<QString>{
+			tr::lng_tgs_icons_common(tr::now),
+			tr::lng_tgs_tiles_mixed(tr::now),
+			tr::lng_tgs_icons_accent(tr::now),
+			tr::lng_tgs_icons_color(tr::now),
+			tr::lng_tgs_icons_logo(tr::now),
+			tr::lng_tgs_icons_gradient(tr::now),
+			tr::lng_tgs_tiles_glass(tr::now),
+		};
+		const auto boxTitle = title;
+		AddActionRow(
+			group,
+			tr::lng_tgs_tiles_style(tr::now),
+			[=] {
+				return texts[std::clamp(
+					Extera::Int(modeKey),
+					0,
+					int(texts.size()) - 1)];
+			},
+			[=] {
+				controller->show(Box([=](not_null<Ui::GenericBox*> box) {
+					SingleChoiceBox(box, {
+						.title = rpl::single(boxTitle),
+						.options = texts,
+						.initialSelection = std::clamp(
+							Extera::Int(modeKey),
+							0,
+							int(texts.size()) - 1),
+						.callback = [=](int index) {
+							Config().setInt(modeKey, index);
+						},
+					});
+				}));
+			});
+		AddColorRow(
+			group,
+			controller,
+			tr::lng_tgs_icons_c1(tr::now),
+			Tristegram::Icons::TileAreaKey(area, u"c1"_q),
+			QColor(0xF0, 0x7A, 0x0C));
+		AddColorRow(
+			group,
+			controller,
+			tr::lng_tgs_icons_c2(tr::now),
+			Tristegram::Icons::TileAreaKey(area, u"c2"_q),
+			QColor(0xE8, 0x31, 0x8A));
+	}
+	AddNote(content, tr::lng_tgs_tiles_areas_note(tr::now));
 }
 
 void FillChats(
@@ -1827,6 +1922,22 @@ void FillChats(
 			},
 			true);
 		AddNote(content, tr::lng_tgc_about(tr::now));
+		{
+			const auto group = AddGroup(content);
+			AddConfigToggle(
+				group,
+				tr::lng_tgs_tools_button(tr::now),
+				u"tristegram_chat_tools"_q);
+			AddConfigToggle(
+				group,
+				tr::lng_tgs_chat_cards(tr::now),
+				u"tristegram_chat_cards"_q);
+			AddConfigToggle(
+				group,
+				tr::lng_tgs_tools_stories_hide(tr::now),
+				u"hide_stories"_q);
+		}
+		AddNote(content, tr::lng_tgs_tools_restart(tr::now));
 	}
 	AddLabel(content, tr::lng_tgs_time(tr::now));
 	AddSegments(
@@ -2401,7 +2512,8 @@ void SettingsWindow::paintNav(QPainter &p) {
 			tileSize);
 		// Solid tiles with white icons, like in the main menu; the tile
 		// colors from the "Icons" section apply here too.
-		const auto custom = style::CurrentMenuTileColors();
+		const auto custom = Tristegram::Icons::TileColors(
+			Tristegram::Icons::TileArea::Settings);
 		p.setPen(Qt::NoPen);
 		if (active) {
 			p.setBrush(QColor(255, 255, 255, 60));

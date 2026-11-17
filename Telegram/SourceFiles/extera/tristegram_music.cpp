@@ -528,6 +528,55 @@ public:
 		return true;
 	}
 
+	struct StatEntry {
+		QString title;
+		QString performer;
+		int64 ms = 0;
+		int plays = 0;
+	};
+	[[nodiscard]] int64 statsTotal() const {
+		return _statsTotal;
+	}
+	[[nodiscard]] int statsPlays() const {
+		auto result = 0;
+		for (const auto &[key, entry] : _stats) {
+			result += entry.plays;
+		}
+		return result;
+	}
+	[[nodiscard]] std::vector<StatEntry> topTracks(int limit) const {
+		auto result = std::vector<StatEntry>();
+		for (const auto &[key, entry] : _stats) {
+			result.push_back(entry);
+		}
+		ranges::sort(result, ranges::greater(), &StatEntry::ms);
+		if (int(result.size()) > limit) {
+			result.resize(limit);
+		}
+		return result;
+	}
+	[[nodiscard]] std::vector<StatEntry> topArtists(int limit) const {
+		auto map = base::flat_map<QString, StatEntry>();
+		for (const auto &[key, entry] : _stats) {
+			const auto name = entry.performer.isEmpty()
+				? tr::lng_tgm_unknown_artist(tr::now)
+				: entry.performer;
+			auto &artist = map[name.toLower()];
+			artist.performer = name;
+			artist.ms += entry.ms;
+			artist.plays += entry.plays;
+		}
+		auto result = std::vector<StatEntry>();
+		for (const auto &[key, entry] : map) {
+			result.push_back(entry);
+		}
+		ranges::sort(result, ranges::greater(), &StatEntry::ms);
+		if (int(result.size()) > limit) {
+			result.resize(limit);
+		}
+		return result;
+	}
+
 	void ensureTracking() {
 		if (_tracking) {
 			return;
@@ -538,10 +587,19 @@ public:
 		) | rpl::filter(
 			rpl::mappers::_1 == Type::Song
 		) | rpl::on_next([=] {
-			if (const auto track = CurrentTrack(); track && track->peer) {
+			const auto track = CurrentTrack();
+			if (track && track->peer) {
 				pushRecent(*track);
 			}
+			statsTrackChanged(track);
 		}, _lifetime);
+		instance->updatedNotifier(
+		) | rpl::filter([](const Media::Player::TrackState &state) {
+			return (state.id.type() == Type::Song);
+		}) | rpl::on_next([=](const Media::Player::TrackState &state) {
+			statsTick(state);
+		}, _lifetime);
+		statsTrackChanged(CurrentTrack());
 		instance->updatedNotifier(
 		) | rpl::filter([](const Media::Player::TrackState &state) {
 			return (state.id.type() == Type::Song)
@@ -560,6 +618,80 @@ public:
 private:
 	Library() {
 		load();
+		loadStats();
+	}
+
+	void statsTrackChanged(const std::optional<Track> &track) {
+		_statsTick = 0;
+		if (!track) {
+			_statsKey = QString();
+			return;
+		}
+		const auto key = (track->performer + u" - "_q + track->title).toLower();
+		if (key == _statsKey) {
+			return;
+		}
+		_statsKey = key;
+		auto &entry = _stats[key];
+		entry.title = track->title;
+		entry.performer = track->performer;
+		++entry.plays;
+		saveStats();
+	}
+	void statsTick(const Media::Player::TrackState &state) {
+		const auto playing = !Media::Player::IsStoppedOrStopping(state.state)
+			&& !Media::Player::IsPausedOrPausing(state.state);
+		const auto now = crl::now();
+		if (playing && _statsTick && !_statsKey.isEmpty()) {
+			const auto delta = std::clamp(now - _statsTick, crl::time(0), crl::time(3000));
+			_stats[_statsKey].ms += delta;
+			_statsTotal += delta;
+			if (now - _statsSaved > 30000) {
+				saveStats();
+			}
+		}
+		_statsTick = playing ? now : 0;
+	}
+	void loadStats() {
+		const auto object = QJsonDocument::fromJson(
+			Extera::String(u"tristegram_music_stats"_q).toUtf8()).object();
+		_statsTotal = int64(object.value(u"total"_q).toDouble());
+		for (const auto &value : object.value(u"t"_q).toArray()) {
+			const auto row = value.toArray();
+			if (row.size() < 4) {
+				continue;
+			}
+			auto entry = StatEntry{
+				.title = row[0].toString(),
+				.performer = row[1].toString(),
+				.ms = int64(row[2].toDouble()),
+				.plays = row[3].toInt(),
+			};
+			_stats.emplace(
+				(entry.performer + u" - "_q + entry.title).toLower(),
+				std::move(entry));
+		}
+	}
+	void saveStats() {
+		_statsSaved = crl::now();
+		auto list = topTracks(500);
+		auto array = QJsonArray();
+		for (const auto &entry : list) {
+			array.push_back(QJsonArray{
+				entry.title,
+				entry.performer,
+				double(entry.ms),
+				entry.plays,
+			});
+		}
+		auto object = QJsonObject();
+		object.insert(u"total"_q, double(_statsTotal));
+		object.insert(u"t"_q, array);
+		Extera::Config::Instance().setString(
+			u"tristegram_music_stats"_q,
+			QString::fromUtf8(
+				QJsonDocument(object).toJson(QJsonDocument::Compact)));
+		_changes.fire({});
 	}
 
 	void load() {
@@ -612,6 +744,11 @@ private:
 	std::vector<Playlist> _playlists;
 	std::vector<Track> _recent;
 	std::vector<Upload> _uploads;
+	base::flat_map<QString, StatEntry> _stats;
+	QString _statsKey;
+	int64 _statsTotal = 0;
+	crl::time _statsTick = 0;
+	crl::time _statsSaved = 0;
 	base::flat_set<not_null<Main::Session*>> _uploadsSessions;
 	base::flat_map<QString, QImage> _covers;
 	std::vector<Track> _queue;
@@ -1207,7 +1344,26 @@ enum class Source {
 	Playlist,
 	System,
 	Upload,
+	Stats,
 };
+
+constexpr auto kStatsSourceSaved = 1001;
+
+[[nodiscard]] QString FormatListened(int64 ms) {
+	const auto minutes = ms / 60000;
+	const auto hours = minutes / 60;
+	return hours
+		? tr::lng_tgm_stats_hours(
+			tr::now,
+			lt_hours,
+			QString::number(hours),
+			lt_minutes,
+			QString::number(minutes % 60))
+		: tr::lng_tgm_stats_minutes(
+			tr::now,
+			lt_minutes,
+			QString::number(minutes));
+}
 
 constexpr auto kSystemSourceSaved = 1000;
 
@@ -1298,6 +1454,7 @@ void Sidebar::relayout() {
 	};
 	add(Source::Mine, -1);
 	add(Source::Recent, -1);
+	add(Source::Stats, -1);
 	if (SystemMedia::Supported()) {
 		add(Source::System, -1);
 	}
@@ -1491,6 +1648,10 @@ void Sidebar::paintEvent(QPaintEvent *e) {
 			text = tr::lng_tgm_upload(tr::now);
 			color = Alpha(st::windowFg->c, 0.1);
 			break;
+		case Source::Stats:
+			text = tr::lng_tgm_stats(tr::now);
+			color = QColor(0xBF, 0x5A, 0xF2);
+			break;
 		}
 		const auto cover = (row.source == Source::Playlist && !create)
 			? Library::Instance().cover(row.index)
@@ -1522,6 +1683,14 @@ void Sidebar::paintEvent(QPaintEvent *e) {
 		} else if (create) {
 			p.drawLine(QPointF(c.x() - s, c.y()), QPointF(c.x() + s, c.y()));
 			p.drawLine(QPointF(c.x(), c.y() - s), QPointF(c.x(), c.y() + s));
+		} else if (row.source == Source::Stats) {
+			// Three bars of a chart.
+			for (auto k = 0; k != 3; ++k) {
+				const auto h = s * (0.8 + 0.6 * ((k * 2) % 3));
+				p.drawLine(
+					QPointF(c.x() + (k - 1) * s * 0.8, c.y() + s),
+					QPointF(c.x() + (k - 1) * s * 0.8, c.y() + s - h));
+			}
 		} else if (row.source == Source::System) {
 			p.setBrush(Qt::NoBrush);
 			p.drawRoundedRect(
@@ -1598,6 +1767,7 @@ private:
 	// "On the computer": what Spotify or a browser plays now.
 	void requestSystem();
 	void paintSystem(QPainter &p);
+	void paintStats(QPainter &p);
 	[[nodiscard]] QRectF systemCard() const;
 	[[nodiscard]] QRectF systemButton(int index) const;
 	[[nodiscard]] int systemButtonAt(QPoint position) const;
@@ -1700,6 +1870,7 @@ void TrackList::refresh() {
 	} break;
 	case Source::System:
 	case Source::Upload:
+	case Source::Stats:
 		break;
 	}
 	_over = -1;
@@ -1710,6 +1881,11 @@ void TrackList::refresh() {
 int TrackList::resizeGetHeight(int newWidth) {
 	if (_source == Source::System) {
 		return Px(300);
+	} else if (_source == Source::Stats) {
+		const auto &library = Library::Instance();
+		const auto tracks = int(library.topTracks(10).size());
+		const auto artists = int(library.topArtists(5).size());
+		return Px(130) + Px(40) * 2 + (tracks + artists) * Px(40) + Px(20);
 	}
 	return std::max(int(_tracks.size()) * Px(54) + Px(12), Px(150));
 }
@@ -1728,6 +1904,139 @@ void TrackList::requestSystem() {
 			update();
 		}
 	}));
+}
+
+void TrackList::paintStats(QPainter &p) {
+	const auto &library = Library::Instance();
+	const auto colors = CurrentLogoStyle();
+	const auto card = QRectF(Px(16), Px(12), width() - Px(32), Px(110));
+	{
+		auto wash = QLinearGradient(card.topLeft(), card.bottomRight());
+		wash.setColorAt(0., Alpha(colors.from, 0.22));
+		wash.setColorAt(1., Alpha(colors.to, 0.08));
+		p.setPen(Qt::NoPen);
+		p.setBrush(wash);
+		p.drawRoundedRect(card, Px(20), Px(20));
+	}
+	const auto small = Font(12);
+	const auto big = Font(26, true);
+	p.setFont(small->f);
+	p.setPen(st::windowSubTextFg);
+	p.drawText(
+		card.adjusted(Px(20), Px(14), -Px(20), 0),
+		Qt::AlignLeft | Qt::AlignTop,
+		tr::lng_tgm_stats_total(tr::now));
+	auto title = QLinearGradient(card.topLeft(), card.topRight());
+	title.setColorAt(0., colors.from);
+	title.setColorAt(1., colors.to);
+	p.setFont(big->f);
+	p.setPen(QPen(QBrush(title), 1.));
+	p.drawText(
+		card.adjusted(Px(20), Px(32), -Px(20), 0),
+		Qt::AlignLeft | Qt::AlignTop,
+		FormatListened(library.statsTotal()));
+	p.setFont(small->f);
+	p.setPen(st::windowSubTextFg);
+	p.drawText(
+		card.adjusted(Px(20), 0, -Px(20), -Px(14)),
+		Qt::AlignLeft | Qt::AlignBottom,
+		tr::lng_tgm_stats_plays(
+			tr::now,
+			lt_plays,
+			QString::number(library.statsPlays())));
+
+	auto top = int(card.bottom()) + Px(16);
+	const auto section = [&](const QString &label) {
+		p.setFont(Font(11, true)->f);
+		p.setPen(st::windowSubTextFg);
+		p.drawText(
+			QRect(Px(24), top, width() - Px(48), Px(28)),
+			Qt::AlignLeft | Qt::AlignVCenter,
+			label.toUpper());
+		top += Px(32);
+	};
+	const auto row = [&](
+			int index,
+			const QString &main,
+			const QString &sub,
+			int64 ms,
+			int64 max) {
+		const auto left = Px(24);
+		const auto right = width() - Px(24);
+		p.setFont(st::semiboldFont);
+		p.setPen(st::windowSubTextFg);
+		p.drawText(
+			QRect(left, top, Px(24), Px(36)),
+			Qt::AlignLeft | Qt::AlignVCenter,
+			QString::number(index + 1));
+		const auto textLeft = left + Px(28);
+		const auto timeText = FormatListened(ms);
+		const auto timeWidth = small->width(timeText) + Px(8);
+		const auto available = right - textLeft - timeWidth;
+		p.setPen(st::windowBoldFg);
+		p.drawText(
+			QRect(textLeft, top, available, Px(20)),
+			Qt::AlignLeft | Qt::AlignVCenter,
+			st::semiboldFont->elided(main, available));
+		if (!sub.isEmpty()) {
+			p.setFont(small->f);
+			p.setPen(st::windowSubTextFg);
+			p.drawText(
+				QRect(textLeft, top + Px(18), available, Px(16)),
+				Qt::AlignLeft | Qt::AlignVCenter,
+				small->elided(sub, available));
+		}
+		p.setFont(small->f);
+		p.setPen(st::windowSubTextFg);
+		p.drawText(
+			QRect(right - timeWidth, top, timeWidth, Px(20)),
+			Qt::AlignRight | Qt::AlignVCenter,
+			timeText);
+		// A thin bar of the share of the leader.
+		const auto share = max ? (ms / double(max)) : 0.;
+		const auto bar = QRectF(right - Px(60), top + Px(24), Px(60), Px(4));
+		p.setPen(Qt::NoPen);
+		p.setBrush(Alpha(st::windowFg->c, 0.1));
+		p.drawRoundedRect(bar, Px(2), Px(2));
+		auto fill = QLinearGradient(bar.topLeft(), bar.topRight());
+		fill.setColorAt(0., colors.from);
+		fill.setColorAt(1., colors.to);
+		p.setBrush(fill);
+		p.drawRoundedRect(
+			QRectF(bar.x(), bar.y(), bar.width() * share, bar.height()),
+			Px(2),
+			Px(2));
+		top += Px(40);
+	};
+	const auto tracks = library.topTracks(10);
+	if (tracks.empty()) {
+		p.setFont(st::normalFont);
+		p.setPen(st::windowSubTextFg);
+		p.drawText(
+			QRect(Px(24), top, width() - Px(48), Px(60)),
+			Qt::AlignHCenter | Qt::AlignTop | Qt::TextWordWrap,
+			tr::lng_tgm_stats_empty(tr::now));
+		return;
+	}
+	section(tr::lng_tgm_stats_top_tracks(tr::now));
+	for (auto i = 0; i != int(tracks.size()); ++i) {
+		const auto &entry = tracks[i];
+		row(i, entry.title, entry.performer, entry.ms, tracks.front().ms);
+	}
+	const auto artists = library.topArtists(5);
+	section(tr::lng_tgm_stats_top_artists(tr::now));
+	for (auto i = 0; i != int(artists.size()); ++i) {
+		const auto &entry = artists[i];
+		row(
+			i,
+			entry.performer,
+			tr::lng_tgm_stats_plays(
+				tr::now,
+				lt_plays,
+				QString::number(entry.plays)),
+			entry.ms,
+			artists.front().ms);
+	}
 }
 
 QRectF TrackList::systemCard() const {
@@ -2024,6 +2333,9 @@ void TrackList::paintEvent(QPaintEvent *e) {
 	if (_source == Source::System) {
 		paintSystem(p);
 		return;
+	} else if (_source == Source::Stats) {
+		paintStats(p);
+		return;
 	}
 	if (_tracks.empty()) {
 		p.setFont(st::normalFont);
@@ -2222,6 +2534,8 @@ MusicWindow::MusicWindow(
 				? 1
 				: (chosen.first == Source::System)
 				? kSystemSourceSaved
+				: (chosen.first == Source::Stats)
+				? kStatsSourceSaved
 				: (2 + chosen.second));
 	}, lifetime());
 
@@ -2266,6 +2580,8 @@ MusicWindow::MusicWindow(
 	const auto playlists = int(Library::Instance().playlists().size());
 	if (saved == 1) {
 		_sidebar->choose(Source::Recent, -1);
+	} else if (saved == kStatsSourceSaved) {
+		_sidebar->choose(Source::Stats, -1);
 	} else if (saved == kSystemSourceSaved && SystemMedia::Supported()) {
 		_sidebar->choose(Source::System, -1);
 	} else if (saved >= 2 && saved - 2 < playlists) {
@@ -2943,6 +3259,10 @@ void NowPlayingPill::paintEvent(QPaintEvent *e) {
 }
 
 } // namespace
+
+void StartMusicTracking() {
+	Library::Instance().ensureTracking();
+}
 
 void ShowMusicWindow(not_null<Window::SessionController*> controller) {
 	controller->show(Box([=](not_null<Ui::GenericBox*> box) {

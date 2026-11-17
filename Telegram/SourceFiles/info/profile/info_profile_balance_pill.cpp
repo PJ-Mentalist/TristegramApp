@@ -19,6 +19,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "wallet/wallet_fiat.h"
 
 #include "styles/style_info_profile_top_bar.h"
+#include "styles/style_basic.h"
 
 namespace Info::Profile {
 namespace {
@@ -163,12 +164,8 @@ void BalancePill::setContent(const QString &label, int64 balance) {
 void BalancePill::refreshColors() {
 	++_appearanceRevision;
 	_colors = ComputePillColors(_edgeColor);
-	const auto tint = _edgeColor
-		? Ui::BlendColors(
-			*_edgeColor,
-			_colors.primary,
-			st::infoProfileBalancePillColoredIconTint)
-		: st::currencyFg->c;
+	// Tristegram: the currency follows the theme accent, not the cover.
+	const auto tint = st::windowActiveTextFg->c;
 	_icon = Ui::Earn::IconCurrencyTwoTone(
 		st::infoProfileBalancePillIconSize,
 		tint);

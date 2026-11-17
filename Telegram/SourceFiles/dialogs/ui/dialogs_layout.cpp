@@ -589,6 +589,47 @@ void PaintRow(
 		roundedInset,
 		style::ConvertScale(2)));
 	const auto hover = context.tristegramHover;
+	if (Extera::Bool(u"tristegram_chat_cards"_q)
+		&& !context.active
+		&& !(flags & Flag::TopicJumpRipple)) {
+		// Tristegram: every chat on its own soft card, unread ones get a
+		// glowing bar in the logo colors on the left.
+		auto hq = PainterHighQualityEnabler(p);
+		auto card = st::windowFg->c;
+		card.setAlphaF(0.035);
+		auto rim = st::windowFg->c;
+		rim.setAlphaF(0.06);
+		p.setPen(QPen(rim, 1.));
+		p.setBrush(card);
+		p.drawRoundedRect(
+			QRectF(rounded).marginsRemoved({ 0.5, 0.5, 0.5, 0.5 }),
+			roundedRadius,
+			roundedRadius);
+		const auto unread = history
+			&& (history->unreadCount() > 0 || history->unreadMark())
+			&& !history->muted();
+		if (unread) {
+			const auto style = Tristegram::CurrentLogoStyle();
+			const auto bar = QRectF(
+				rounded.x() + style::ConvertScale(3),
+				rounded.y() + rounded.height() * 0.25,
+				style::ConvertScale(3),
+				rounded.height() * 0.5);
+			auto glow = style.from;
+			glow.setAlphaF(0.25);
+			p.setPen(Qt::NoPen);
+			p.setBrush(glow);
+			p.drawRoundedRect(
+				bar.marginsAdded({ 2., 2., 2., 2. }),
+				bar.width(),
+				bar.width());
+			auto fill = QLinearGradient(bar.topLeft(), bar.bottomLeft());
+			fill.setColorAt(0., style.from);
+			fill.setColorAt(1., style.to);
+			p.setBrush(fill);
+			p.drawRoundedRect(bar, bar.width() / 2., bar.width() / 2.);
+		}
+	}
 	if (context.active || context.selected || hover > 0.) {
 		auto hq = PainterHighQualityEnabler(p);
 		p.setPen(Qt::NoPen);

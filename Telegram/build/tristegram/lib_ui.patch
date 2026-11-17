@@ -432,10 +432,10 @@ index e194c4d..2bc4212 100644
  	Bold       = 0x01,
  	Italic     = 0x02,
 diff --git a/ui/style/style_core_icon.cpp b/ui/style/style_core_icon.cpp
-index c1792da..d2e9557 100644
+index c1792da..93ccfc7 100644
 --- a/ui/style/style_core_icon.cpp
 +++ b/ui/style/style_core_icon.cpp
-@@ -5,17 +5,30 @@
+@@ -5,17 +5,31 @@
  // https://github.com/desktop-app/legal/blob/master/LEGAL
  //
  #include "ui/style/style_core_icon.h"
@@ -460,13 +460,14 @@ index c1792da..d2e9557 100644
 +namespace {
 +
 +IconEffectProvider GlobalIconEffects;
++int GlobalIconLook = 0;
 +
 +} // namespace
 +
  namespace internal {
  namespace {
  
-@@ -26,6 +39,94 @@ namespace {
+@@ -26,6 +40,281 @@ namespace {
  		| uint32(c.alpha());
  }
  
@@ -479,7 +480,189 @@ index c1792da..d2e9557 100644
 +[[nodiscard]] uint32 EffectiveKey(const Color &color) {
 +	const auto base = ColorKey(color->c);
 +	const auto effect = EffectFor(color);
-+	return effect ? (base ^ (uint32(effect->key) * 0x9E3779B1U)) : base;
++	const auto look = GlobalIconLook
++		? (uint32(GlobalIconLook) * 0x85EBCA6BU)
++		: 0U;
++	return (effect ? (base ^ (uint32(effect->key) * 0x9E3779B1U)) : base)
++		^ look;
++}
++
++// Tristegram: icon looks, all made from the ordinary colored icon.
++[[nodiscard]] QImage EmptyLike(const QImage &image) {
++	auto result = QImage(image.size(), QImage::Format_ARGB32_Premultiplied);
++	result.fill(Qt::transparent);
++	return result;
++}
++
++// The icon shape grown by `radius` pixels, filled with `color`.
++[[nodiscard]] QImage Grown(const QImage &image, int radius, QColor color) {
++	auto result = EmptyLike(image);
++	{
++		auto p = QPainter(&result);
++		for (auto dx = -radius; dx <= radius; ++dx) {
++			for (auto dy = -radius; dy <= radius; ++dy) {
++				if (dx * dx + dy * dy <= radius * radius + radius) {
++					p.drawImage(dx, dy, image);
++				}
++			}
++		}
++		p.setCompositionMode(QPainter::CompositionMode_SourceIn);
++		p.fillRect(result.rect(), color);
++	}
++	return result;
++}
++
++[[nodiscard]] QImage Filled(const QImage &image, QColor color) {
++	auto result = image;
++	auto p = QPainter(&result);
++	p.setCompositionMode(QPainter::CompositionMode_SourceIn);
++	p.fillRect(result.rect(), color);
++	return result;
++}
++
++[[nodiscard]] uint32 Noise(int x, int y) {
++	auto h = uint32(x) * 374761393U + uint32(y) * 668265263U;
++	h = (h ^ (h >> 13)) * 1274126177U;
++	return h ^ (h >> 16);
++}
++
++[[nodiscard]] QImage ApplyIconLook(QImage image, QColor base, int look) {
++	if (image.isNull()) {
++		return image;
++	}
++	const auto sourceRatio = image.devicePixelRatio();
++	const auto ratio = std::max(int(std::round(sourceRatio)), 1);
++	image = std::move(image).convertToFormat(
++		QImage::Format_ARGB32_Premultiplied);
++	image.setDevicePixelRatio(1.);
++	auto result = QImage();
++	switch (look) {
++	case 1: { // Pixel: big square pixels with hard edges.
++		const auto block = std::max(2 * ratio, 2);
++		const auto small = image.scaled(
++			std::max(image.width() / block, 1),
++			std::max(image.height() / block, 1),
++			Qt::IgnoreAspectRatio,
++			Qt::SmoothTransformation);
++		auto hard = small.convertToFormat(QImage::Format_ARGB32);
++		for (auto y = 0; y != hard.height(); ++y) {
++			auto line = reinterpret_cast<QRgb*>(hard.scanLine(y));
++			for (auto x = 0; x != hard.width(); ++x) {
++				const auto a = qAlpha(line[x]);
++				if (a < 90) {
++					line[x] = 0;
++				} else {
++					auto c = QColor::fromRgba(line[x]);
++					c.setAlpha(255);
++					line[x] = c.rgba();
++				}
++			}
++		}
++		result = EmptyLike(image);
++		auto p = QPainter(&result);
++		p.drawImage(
++			QRect(0, 0, hard.width() * block, hard.height() * block),
++			hard.scaled(
++				hard.width() * block,
++				hard.height() * block,
++				Qt::IgnoreAspectRatio,
++				Qt::FastTransformation));
++	} break;
++	case 2: { // Retro: a hard offset shadow and scan lines.
++		result = EmptyLike(image);
++		auto p = QPainter(&result);
++		p.drawImage(ratio, ratio, Filled(image, base.darker(260)));
++		p.drawImage(0, 0, image);
++		p.setCompositionMode(QPainter::CompositionMode_DestinationOut);
++		for (auto y = 1; y < result.height(); y += 2 * ratio) {
++			p.fillRect(0, y, result.width(), ratio, QColor(0, 0, 0, 70));
++		}
++	} break;
++	case 3: { // Neon: a bright core in a colored glow.
++		result = EmptyLike(image);
++		const auto halo = Images::BlurLargeImage(
++			base::duplicate(image),
++			std::max(3 * ratio, 2));
++		auto p = QPainter(&result);
++		p.drawImage(0, 0, halo);
++		p.drawImage(0, 0, halo);
++		p.drawImage(0, 0, image);
++		p.setOpacity(0.55);
++		p.drawImage(0, 0, Filled(image, QColor(255, 255, 255)));
++	} break;
++	case 4: { // Outline: only the contour of the icon.
++		result = Grown(image, ratio, base);
++		auto p = QPainter(&result);
++		p.setCompositionMode(QPainter::CompositionMode_DestinationOut);
++		p.drawImage(0, 0, image);
++		p.setCompositionMode(QPainter::CompositionMode_SourceOver);
++		p.setOpacity(0.18);
++		p.drawImage(0, 0, image);
++	} break;
++	case 5: { // 3D: a shadow below and light from above.
++		result = EmptyLike(image);
++		auto p = QPainter(&result);
++		p.setOpacity(0.45);
++		p.drawImage(0, std::max(ratio * 3 / 2, 1), Filled(image, QColor(0, 0, 0)));
++		p.setOpacity(1.);
++		p.drawImage(0, 0, image);
++		auto light = Filled(image, QColor(255, 255, 255));
++		{
++			auto q = QPainter(&light);
++			q.setCompositionMode(QPainter::CompositionMode_DestinationIn);
++			auto fade = QLinearGradient(0, 0, 0, light.height());
++			fade.setColorAt(0., QColor(0, 0, 0, 150));
++			fade.setColorAt(0.55, QColor(0, 0, 0, 0));
++			q.fillRect(light.rect(), fade);
++		}
++		p.drawImage(0, 0, light);
++	} break;
++	case 6: { // Japan: vermilion ink with a brush texture.
++		const auto ink = QColor(0xD0, 0x3A, 0x2F);
++		auto colored = Filled(image, QColor::fromRgbF(
++			float((base.redF() + ink.redF() * 2) / 3),
++			float((base.greenF() + ink.greenF() * 2) / 3),
++			float((base.blueF() + ink.blueF() * 2) / 3),
++			1.f));
++		auto textured = colored.convertToFormat(QImage::Format_ARGB32);
++		for (auto y = 0; y != textured.height(); ++y) {
++			auto line = reinterpret_cast<QRgb*>(textured.scanLine(y));
++			for (auto x = 0; x != textured.width(); ++x) {
++				const auto a = qAlpha(line[x]);
++				if (!a) {
++					continue;
++				}
++				const auto n = Noise(x / std::max(ratio, 1), y / std::max(ratio, 1)) % 100;
++				const auto k = (n < 18) ? 0.55 : (0.85 + (n % 16) / 100.);
++				auto c = QColor::fromRgba(line[x]);
++				c.setAlpha(std::clamp(int(a * k), 0, 255));
++				line[x] = c.rgba();
++			}
++		}
++		result = EmptyLike(image);
++		auto p = QPainter(&result);
++		p.setRenderHint(QPainter::SmoothPixmapTransform);
++		p.translate(result.width() / 2., result.height() / 2.);
++		p.rotate(-6.);
++		p.translate(-result.width() / 2., -result.height() / 2.);
++		p.drawImage(0, 0, textured.convertToFormat(
++			QImage::Format_ARGB32_Premultiplied));
++	} break;
++	case 7: { // Sticker: a white border and a soft shadow.
++		result = EmptyLike(image);
++		auto p = QPainter(&result);
++		p.setOpacity(0.3);
++		p.drawImage(0, ratio, Grown(image, 2 * ratio, QColor(0, 0, 0)));
++		p.setOpacity(1.);
++		p.drawImage(0, 0, Grown(image, std::max(ratio * 3 / 2, 1), QColor(255, 255, 255)));
++		p.drawImage(0, 0, image);
++	} break;
++	default:
++		result = std::move(image);
++		break;
++	}
++	result.setDevicePixelRatio(sourceRatio);
++	return result;
 +}
 +
 +[[nodiscard]] QImage ApplyIconEffect(
@@ -552,16 +735,21 @@ index c1792da..d2e9557 100644
 +}
 +
 +[[nodiscard]] QImage MakeIconImage(const QImage &mask, const Color &color) {
-+	if (const auto effect = EffectFor(color)) {
-+		return ApplyIconEffect(mask, color->c, *effect);
-+	}
-+	return colorizeImage(mask, color);
++	auto result = [&] {
++		if (const auto effect = EffectFor(color)) {
++			return ApplyIconEffect(mask, color->c, *effect);
++		}
++		return colorizeImage(mask, color);
++	}();
++	return GlobalIconLook
++		? ApplyIconLook(std::move(result), color->c, GlobalIconLook)
++		: result;
 +}
 +
  base::flat_map<const IconMask*, QImage> IconMasks;
  QMutex IconMasksMutex;
  
-@@ -388,7 +489,7 @@ void MonoIcon::ensureLoaded() const {
+@@ -388,7 +677,7 @@ void MonoIcon::ensureLoaded() const {
  
  void MonoIcon::ensureColorized() const {
  	ensureLoaded();
@@ -570,7 +758,7 @@ index c1792da..d2e9557 100644
  		createCachedPixmap();
  	}
  }
-@@ -403,7 +504,7 @@ void MonoIcon::ensureColorizedImage(QColor color) const {
+@@ -403,7 +692,7 @@ void MonoIcon::ensureColorizedImage(QColor color) const {
  }
  
  void MonoIcon::createCachedPixmap() const {
@@ -579,7 +767,7 @@ index c1792da..d2e9557 100644
  	_pixmapColorKey = colorKey;
  	if (_ownPixmap) {
  		_pixmap = QPixmap::fromImage(colorizeImage(_maskImage, _color));
-@@ -411,7 +512,7 @@ void MonoIcon::createCachedPixmap() const {
+@@ -411,7 +700,7 @@ void MonoIcon::createCachedPixmap() const {
  		const auto key = std::make_pair(_mask, colorKey);
  		auto j = iconPixmaps.find(key);
  		if (j == end(iconPixmaps)) {
@@ -588,7 +776,7 @@ index c1792da..d2e9557 100644
  			j = iconPixmaps.emplace(
  				key,
  				QPixmap::fromImage(std::move(image))).first;
-@@ -536,4 +637,29 @@ void DestroyIcons() {
+@@ -536,4 +825,36 @@ void DestroyIcons() {
  }
  
  } // namespace internal
@@ -612,6 +800,13 @@ index c1792da..d2e9557 100644
 +	return GlobalMenuTiles ? GlobalMenuTiles() : MenuTileColors();
 +}
 +
++void SetIconLook(int look) {
++	if (GlobalIconLook != look) {
++		GlobalIconLook = look;
++		RefreshIconEffects();
++	}
++}
++
 +void RefreshIconEffects() {
 +	// Icons keep their own copies, the shared cache only grows otherwise.
 +	internal::iconPixmaps.clear();
@@ -620,10 +815,10 @@ index c1792da..d2e9557 100644
  } // namespace style
 diff --git a/ui/style/style_core_icon_effects.h b/ui/style/style_core_icon_effects.h
 new file mode 100644
-index 0000000..c2fc694
+index 0000000..e29e269
 --- /dev/null
 +++ b/ui/style/style_core_icon_effects.h
-@@ -0,0 +1,49 @@
+@@ -0,0 +1,54 @@
 +// This file is part of Desktop App Toolkit,
 +// a set of libraries for developing nice desktop applications.
 +//
@@ -659,6 +854,11 @@ index 0000000..c2fc694
 +
 +// Cached icon pictures are made again on their next paint.
 +void RefreshIconEffects();
++
++// Tristegram: a look for every icon. 0 classic, 1 pixel, 2 retro,
++// 3 neon, 4 outline, 5 3D, 6 japan, 7 sticker.
++inline constexpr auto kIconLookCount = 8;
++void SetIconLook(int look);
 +
 +// Tristegram: colors of the tiles under menu icons. An invalid `from`
 +// keeps the default color for every icon, an invalid `icon` paints
@@ -1421,7 +1621,7 @@ index a05ab78..c1e7862 100644
  		-> rpl::producer<ShadowVisibility>;
  
 diff --git a/ui/widgets/side_bar_button.cpp b/ui/widgets/side_bar_button.cpp
-index 7633972..2ef0f23 100644
+index 7633972..4206afc 100644
 --- a/ui/widgets/side_bar_button.cpp
 +++ b/ui/widgets/side_bar_button.cpp
 @@ -162,12 +162,52 @@ int SideBarButton::resizeGetHeight(int newWidth) {
@@ -1478,6 +1678,46 @@ index 7633972..2ef0f23 100644
  
  	RippleButton::paintRipple(p, 0, 0);
  
+@@ -206,13 +246,33 @@ void SideBarButton::paintEvent(QPaintEvent *e) {
+ 
+ 		auto hq = PainterHighQualityEnabler(p);
+ 		p.setPen(Qt::NoPen);
+-		p.setBrush(_active
+-			? (_badgeMuted ? _st.badgeBgMutedActive : _st.badgeBgActive)
+-			: (_badgeMuted ? _st.badgeBgMuted : _st.badgeBg));
+ 		const auto r = _st.badgeHeight / 2;
+-		p.drawRoundedRect(x, y, _iconCacheBadgeWidth, _st.badgeHeight, r, r);
+-
+-		p.setPen(_st.badgeFg);
++		const auto badge = QRect(x, y, _iconCacheBadgeWidth, _st.badgeHeight);
++		if (tile) {
++			// Tristegram: readable badges. White text on the logo gradient
++			// or on a dark capsule when muted, on the active tile the
++			// badge is white with the text in the logo color.
++			auto textColor = QColor(255, 255, 255);
++			if (_active) {
++				p.setBrush(QColor(255, 255, 255));
++				textColor = gradient.first.darker(115);
++			} else if (_badgeMuted) {
++				p.setBrush(QColor(0x5A, 0x5A, 0x66));
++			} else {
++				auto fill = QLinearGradient(badge.topLeft(), badge.topRight());
++				fill.setColorAt(0., gradient.first);
++				fill.setColorAt(1., gradient.second);
++				p.setBrush(fill);
++			}
++			p.drawRoundedRect(badge, r, r);
++			p.setPen(textColor);
++		} else {
++			p.setBrush(_active
++				? (_badgeMuted ? _st.badgeBgMutedActive : _st.badgeBgActive)
++				: (_badgeMuted ? _st.badgeBgMuted : _st.badgeBg));
++			p.drawRoundedRect(badge, r, r);
++			p.setPen(_st.badgeFg);
++		}
+ 		_badge.draw(
+ 			p,
+ 			x + (_iconCacheBadgeWidth - _badge.maxWidth()) / 2,
 diff --git a/ui/widgets/side_bar_button.h b/ui/widgets/side_bar_button.h
 index 5e9e3dc..c0f96dc 100644
 --- a/ui/widgets/side_bar_button.h

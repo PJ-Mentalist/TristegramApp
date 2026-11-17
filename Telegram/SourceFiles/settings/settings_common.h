@@ -252,6 +252,7 @@ public:
 private:
 	not_null<const style::icon*> _icon;
 	bool _whiteGlyph = false;
+	QColor _glyphColor;
 	std::optional<Ui::RoundRect> _background;
 	std::optional<std::pair<int, QBrush>> _backgroundBrush;
 

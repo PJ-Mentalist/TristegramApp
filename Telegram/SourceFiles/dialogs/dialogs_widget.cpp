@@ -14,6 +14,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "extera/extera_config.h"
 #include "extera/tristegram_bar.h"
 #include "extera/tristegram_downloads.h"
+#include "extera/tristegram_cleaner.h"
 
 #include "base/call_delayed.h"
 #include "base/qt/qt_key_modifiers.h"
@@ -1906,6 +1907,33 @@ void Widget::updateControlsVisibility(bool fast) {
 		setInnerFocus();
 	}
 	updateLockUnlockPosition();
+}
+
+void Widget::showTristegramChatTools() {
+	const auto button = static_cast<Ui::IconButton*>(
+		_searchControls->findChild<QWidget*>(u"tristegramChatTools"_q));
+	auto menu = new Ui::PopupMenu(this, st::popupMenuWithIcons);
+	menu->setAttribute(Qt::WA_DeleteOnClose);
+	const auto window = controller();
+	menu->addAction(tr::lng_tgc_open(tr::now), [=] {
+		Tristegram::ShowChatCleaner(window);
+	}, &st::menuIconClear);
+	menu->addAction(tr::lng_tgs_tools_search(tr::now), crl::guard(this, [=] {
+		_search->setFocusFast();
+	}), &st::menuIconSearch);
+	const auto hidden = Extera::Bool(u"hide_stories"_q);
+	menu->addAction(hidden
+		? tr::lng_tgs_tools_stories_show(tr::now)
+		: tr::lng_tgs_tools_stories_hide(tr::now), [=] {
+		Extera::Config::Instance().setBool(u"hide_stories"_q, !hidden);
+		window->showToast(tr::lng_tgs_tools_restart(tr::now));
+	}, &st::menuIconStoriesSavedSection);
+	if (button) {
+		menu->popup(button->mapToGlobal(
+			QPoint(button->width(), button->height())));
+	} else {
+		menu->popup(QCursor::pos());
+	}
 }
 
 void Widget::updateLockUnlockPosition() {
@@ -4618,10 +4646,38 @@ void Widget::updateControlsGeometry() {
 		+ st::dialogsFilterPadding.x();
 	const auto filterRight = st::dialogsFilterSkip
 		+ st::dialogsFilterPadding.x();
-	const auto filterWidth = std::max(ratiow, smallw)
+	auto filterWidth = std::max(ratiow, smallw)
 		- filterLeft
 		- filterRight;
 	const auto filterAreaHeight = st::topBarHeight;
+
+	// Tristegram: chat tools next to the search, where the stories were.
+	{
+		auto tools = static_cast<Ui::IconButton*>(
+			_searchControls->findChild<QWidget*>(u"tristegramChatTools"_q));
+		const auto shown = (_layout != Layout::Child)
+			&& (narrowRatio == 0.)
+			&& Extera::Bool(u"tristegram_chat_tools"_q);
+		if (shown && !tools) {
+			tools = Ui::CreateChild<Ui::IconButton>(
+				_searchControls.get(),
+				st::dialogsCalendar);
+			tools->setObjectName(u"tristegramChatTools"_q);
+			tools->setIconOverride(&st::menuIconClear, &st::menuIconClear);
+			tools->setClickedCallback([=] {
+				showTristegramChatTools();
+			});
+		}
+		if (tools) {
+			tools->setVisible(shown);
+			if (shown) {
+				filterWidth -= tools->width();
+				tools->moveToLeft(
+					filterLeft + filterWidth + st::dialogsFilterSkip / 2,
+					(filterAreaHeight - tools->height()) / 2);
+			}
+		}
+	}
 	_searchControls->setGeometry(0, filterAreaTop, ratiow, filterAreaHeight);
 	if (_subsectionTopBar) {
 		_subsectionTopBar->setGeometryWithNarrowRatio(
