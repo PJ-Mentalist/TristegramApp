@@ -10153,6 +10153,15 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_tristegram_bgs_title" = "Chat background";
 "lng_tristegram_preview_tap" = "Tap the logo to play the animation";
 "lng_tristegram_glass_menus" = "Frosted glass menus";
+"lng_tga_title" = "Activity";
+"lng_tga_share" = "Show what I am doing to Tristegram users";
+"lng_tga_show" = "Show the activity of others in chats";
+"lng_tga_note" = "Other Tristegram users see in the chat header that you listen to music, watch a video, write code or play a game. Only the song, the project or the game name is sent, not the window contents. Telegram users without Tristegram see nothing.";
+"lng_tga_music" = "listens to {name}";
+"lng_tga_video" = "watches {name}";
+"lng_tga_coding" = "codes {name} in {app}";
+"lng_tga_coding_app" = "codes in {name}";
+"lng_tga_game" = "plays {name}";
 "lng_tgm_stats" = "Statistics";
 "lng_tgm_stats_total" = "Listened in Tristegram";
 "lng_tgm_stats_hours" = "{hours} h {minutes} min";

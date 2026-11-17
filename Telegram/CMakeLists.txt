@@ -2014,6 +2014,8 @@ PRIVATE
     extera/tristegram_audio_capture.h
     extera/tristegram_hotkeys.cpp
     extera/tristegram_hotkeys.h
+    extera/tristegram_activity.cpp
+    extera/tristegram_activity.h
     extera/tristegram_icons.cpp
     extera/tristegram_icons.h
     extera/tristegram_logo.h

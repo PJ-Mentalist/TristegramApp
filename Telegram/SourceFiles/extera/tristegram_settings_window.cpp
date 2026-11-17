@@ -2044,6 +2044,19 @@ void FillChats(
 void FillPrivacy(
 		not_null<Ui::VerticalLayout*> content,
 		not_null<Window::SessionController*> controller) {
+	AddLabel(content, tr::lng_tga_title(tr::now));
+	{
+		const auto group = AddGroup(content);
+		AddConfigToggle(
+			group,
+			tr::lng_tga_share(tr::now),
+			u"tristegram_activity_share"_q);
+		AddConfigToggle(
+			group,
+			tr::lng_tga_show(tr::now),
+			u"tristegram_activity_show"_q);
+	}
+	AddNote(content, tr::lng_tga_note(tr::now));
 	{
 		const auto group = AddGroup(content);
 		AddConfigToggle(group, tr::lng_tgs_hide_phone(tr::now), u"hide_phone"_q);

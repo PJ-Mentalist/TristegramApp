@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "mainwindow.h"
 
 #include "extera/tristegram_motion.h"
+#include "extera/tristegram_custom.h"
 
 #include "data/data_document.h"
 #include "data/data_session.h"
@@ -159,6 +160,7 @@ void MainWindow::finishFirstShow() {
 		_intro->setInnerFocus();
 	}
 	Tristegram::ShowSplash(body());
+	Tristegram::ApplyInstallChoices(&controller());
 }
 
 void MainWindow::clearWidgetsHook() {

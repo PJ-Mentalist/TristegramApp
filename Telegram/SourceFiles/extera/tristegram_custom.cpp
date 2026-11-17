@@ -17,6 +17,8 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "extera/extera_config.h"
 #include "data/data_wall_paper.h"
 #include "lang/lang_keys.h"
+#include "lang/lang_cloud_manager.h"
+#include "lang/lang_instance.h"
 #include "mainwidget.h"
 #include "storage/localstorage.h"
 #include "ui/layers/generic_box.h"
@@ -27,6 +29,8 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "window/window_session_controller.h"
 #include "styles/style_basic.h"
 
+#include <QtCore/QCoreApplication>
+#include <QtCore/QFile>
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
@@ -527,6 +531,54 @@ void AskText(
 		box->addButton(tr::lng_settings_save(), submit);
 		box->addButton(tr::lng_cancel(), [=] { box->closeBox(); });
 	}));
+}
+
+void ApplyInstallChoices(not_null<Window::Controller*> window) {
+	// The installer leaves the chosen language and look next to the app.
+	const auto path = QCoreApplication::applicationDirPath()
+		+ u"/tristegram_install.json"_q;
+	if (QFile::exists(path)) {
+		auto file = QFile(path);
+		const auto object = file.open(QIODevice::ReadOnly)
+			? QJsonDocument::fromJson(file.readAll()).object()
+			: QJsonObject();
+		file.close();
+		const auto applied = QCoreApplication::applicationDirPath()
+			+ u"/tristegram_install.applied"_q;
+		QFile::remove(applied);
+		QFile::rename(path, applied);
+
+		const auto theme = object.value(u"theme"_q).toInt(-1);
+		Extera::Config::Instance().setInt(
+			u"tristegram_install_theme"_q,
+			(theme >= 0) ? theme : -1);
+		const auto language = object.value(u"language"_q).toString();
+		if (!language.isEmpty() && Lang::Id() != language) {
+			// Downloads the language pack, the app restarts after it.
+			crl::on_main([=] {
+				Lang::CurrentCloudManager().switchToLanguage(language);
+			});
+		}
+	}
+	const auto pending = Extera::Int(u"tristegram_install_theme"_q);
+	if (pending < 0) {
+		return;
+	}
+	window->sessionControllerValue(
+	) | rpl::filter([](Window::SessionController *controller) {
+		return controller != nullptr;
+	}) | rpl::take(1) | rpl::on_next([=](
+			Window::SessionController *controller) {
+		const auto index = Extera::Int(u"tristegram_install_theme"_q);
+		if (index < 0) {
+			return;
+		}
+		Extera::Config::Instance().setInt(u"tristegram_install_theme"_q, -1);
+		Extera::Config::Instance().setInt(u"tristegram_theme_preset"_q, index);
+		crl::on_main(controller, [=] {
+			ApplyThemePreset(controller, index);
+		});
+	}, window->lifetime());
 }
 
 void ChooseColor(

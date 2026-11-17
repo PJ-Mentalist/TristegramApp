@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_top_bar_widget.h"
 
+#include "extera/tristegram_activity.h"
+#include "base/timer.h"
+
 #include "extera/extera_config.h"
 #include "extera/tristegram_music.h"
 #include "extera/tristegram_recorder.h"
@@ -214,6 +217,25 @@ TopBarWidget::TopBarWidget(
 		}) | rpl::on_next([=] {
 			update();
 		}, lifetime());
+	}
+
+	// Tristegram: the status line follows the activity of the user.
+	Tristegram::Activity::Updates(
+	) | rpl::on_next([=](uint64 userId) {
+		const auto peer = _activeChat.key.peer();
+		const auto user = peer ? peer->asUser() : nullptr;
+		if (user && peerToUser(user->id).bare == userId) {
+			updateOnlineDisplay();
+		}
+	}, lifetime());
+	{
+		const auto refresh = lifetime().make_state<base::Timer>([=] {
+			if (_activeChat.key.peer()
+				&& _activeChat.key.peer()->asUser()) {
+				updateOnlineDisplay();
+			}
+		});
+		refresh->callEach(30'000);
 	}
 
 	using UpdateFlag = Data::PeerUpdate::Flag;
@@ -2115,6 +2137,11 @@ void TopBarWidget::updateOnlineDisplay() {
 			&& !session().supportHelper().infoCurrent(user).text.empty()) {
 			text = QString::fromUtf8("\xe2\x9a\xa0\xef\xb8\x8f check info");
 			titlePeerTextOnline = false;
+		} else if (const auto activity = Tristegram::Activity::Lookup(
+				peerToUser(user->id).bare)) {
+			// Tristegram: what this Tristegram user does right now.
+			text = Tristegram::Activity::Describe(*activity);
+			titlePeerTextOnline = true;
 		} else {
 			text = Data::OnlineText(user, now);
 			titlePeerTextOnline = Data::OnlineTextActive(user, now);

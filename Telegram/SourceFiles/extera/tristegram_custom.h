@@ -5,6 +5,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #pragma once
 
 namespace Window {
+class Controller;
 class SessionController;
 } // namespace Window
 
@@ -75,6 +76,9 @@ void AskText(
 	const QString &placeholder,
 	const QString &initial,
 	Fn<void(QString)> done);
+
+// The language and the look chosen in the installer, on the first start.
+void ApplyInstallChoices(not_null<Window::Controller*> window);
 
 // Box with a color editor; calls `done` with the chosen color.
 void ChooseColor(
