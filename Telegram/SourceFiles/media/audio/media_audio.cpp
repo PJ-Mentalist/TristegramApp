@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "media/audio/media_audio.h"
 
+#include "extera/tristegram_volume.h"
+
 #include "media/audio/media_audio_ffmpeg_loader.h"
 #include "media/audio/media_child_ffmpeg_loader.h"
 #include "media/audio/media_audio_loaders.h"
@@ -259,7 +261,11 @@ float64 ComputeVolume(AudioMsgId::Type type) {
 		}
 		return 1.;
 	}();
-	return gain * gain * gain;
+	// Tristegram: music can be louder than 100%, up to ten times.
+	const auto boost = (type == AudioMsgId::Type::Song)
+		? Tristegram::SongBoost()
+		: 1.;
+	return gain * gain * gain * boost;
 }
 
 Mixer *mixer() {
@@ -269,6 +275,7 @@ Mixer *mixer() {
 void Mixer::Track::createStream(AudioMsgId::Type type) {
 	alGenSources(1, &stream.source);
 	alSourcef(stream.source, AL_PITCH, 1.f);
+	alSourcef(stream.source, AL_MAX_GAIN, 10.f);
 	alSource3f(stream.source, AL_POSITION, 0, 0, 0);
 	alSource3f(stream.source, AL_VELOCITY, 0, 0, 0);
 	alSourcei(stream.source, AL_LOOPING, 0);

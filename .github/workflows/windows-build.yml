@@ -69,6 +69,7 @@ jobs:
             TBuild/tdesktop/out
             !TBuild/tdesktop/out/Release/*.pdb
             !TBuild/tdesktop/out/Release/*.ilk
+            !TBuild/tdesktop/out/Release/*.map
             !TBuild/tdesktop/out/Release/python
           key: win64-out-${{ github.ref_name }}-${{ github.run_id }}
           restore-keys: win64-out-${{ github.ref_name }}-
@@ -311,6 +312,7 @@ jobs:
             TBuild/tdesktop/out
             !TBuild/tdesktop/out/Release/*.pdb
             !TBuild/tdesktop/out/Release/*.ilk
+            !TBuild/tdesktop/out/Release/*.map
             !TBuild/tdesktop/out/Release/python
           key: win64-out-${{ github.ref_name }}-${{ github.run_id }}
 
@@ -335,6 +337,14 @@ jobs:
           name: Tristegram-win64
           path: Tristegram\
           retention-days: 14
+
+      - name: Upload map
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tristegram-map
+          path: TBuild/tdesktop/out/Release/Telegram.map
+          retention-days: 30
 
       - name: Installer
         id: installer

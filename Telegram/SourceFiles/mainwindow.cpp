@@ -9,6 +9,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "extera/tristegram_motion.h"
 #include "extera/tristegram_custom.h"
+#include "extera/tristegram_crash.h"
+#include "ui/boxes/confirm_box.h"
+#include <QtGui/QClipboard>
+#include <QtGui/QGuiApplication>
 
 #include "data/data_document.h"
 #include "data/data_session.h"
@@ -161,6 +165,20 @@ void MainWindow::finishFirstShow() {
 	}
 	Tristegram::ShowSplash(body());
 	Tristegram::ApplyInstallChoices(&controller());
+	if (const auto log = Tristegram::TakeLastCrashLog(); !log.isEmpty()) {
+		// Tristegram: the log of the last crash, to send to the developer.
+		crl::on_main(this, [=] {
+			controller().show(Ui::MakeConfirmBox({
+				.text = tr::lng_tgx_crash_text(),
+				.confirmed = [=](Fn<void()> close) {
+					QGuiApplication::clipboard()->setText(log);
+					close();
+				},
+				.confirmText = tr::lng_tgx_crash_copy(),
+				.title = tr::lng_tgx_crash_title(),
+			}));
+		});
+	}
 }
 
 void MainWindow::clearWidgetsHook() {

@@ -10153,6 +10153,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_tristegram_bgs_title" = "Chat background";
 "lng_tristegram_preview_tap" = "Tap the logo to play the animation";
 "lng_tristegram_glass_menus" = "Frosted glass menus";
+"lng_tgm_volume" = "Volume";
+"lng_tgx_crash_title" = "Tristegram closed by itself";
+"lng_tgx_crash_text" = "Last time Tristegram crashed. A short report about the place of the crash is ready: copy it and send it to the developer, it helps to fix the problem. There are no messages or personal data in it.";
+"lng_tgx_crash_copy" = "Copy the report";
 "lng_tga_novel" = "plays the visual novel {name}";
 "lng_tga_games" = "My games";
 "lng_tga_games_remove" = "Remove";

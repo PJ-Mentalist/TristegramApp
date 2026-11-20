@@ -2016,6 +2016,10 @@ PRIVATE
     extera/tristegram_hotkeys.h
     extera/tristegram_activity.cpp
     extera/tristegram_activity.h
+    extera/tristegram_crash.cpp
+    extera/tristegram_crash.h
+    extera/tristegram_volume.cpp
+    extera/tristegram_volume.h
     extera/tristegram_icons.cpp
     extera/tristegram_icons.h
     extera/tristegram_logo.h
@@ -2835,6 +2839,9 @@ if (WIN32)
     endif()
 
     target_link_options(Telegram PRIVATE /PDBPAGESIZE:8192)
+
+    # Tristegram: a map of function addresses, to read crash logs.
+    target_link_options(Telegram PRIVATE /MAP)
 
     if (DESKTOP_APP_WIN7_BASELINE)
         # The loader reads the subsystem version as the minimal Windows.

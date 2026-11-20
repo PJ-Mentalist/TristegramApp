@@ -7,6 +7,8 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "apiwrap.h"
 #include "api/api_common.h"
 #include "core/application.h"
+#include "core/core_settings.h"
+#include "extera/tristegram_volume.h"
 #include "core/file_utilities.h"
 #include "storage/localimageloader.h"
 #include "extera/tristegram_custom.h"
@@ -55,6 +57,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "styles/style_widgets.h"
 
 #include <QtCore/QDir>
+#include <QtCore/QPointer>
 #include <QtCore/QFileInfo>
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
@@ -3019,6 +3022,183 @@ void MusicWindow::paintEvent(QPaintEvent *e) {
 	}
 }
 
+// Volume from 0 to 1000%: up to 100% it is the usual song volume,
+// above it the song volume stays full and the boost grows.
+[[nodiscard]] int VolumePercent() {
+	const auto boost = std::clamp(
+		Extera::Int(u"tristegram_song_boost"_q),
+		100,
+		1000);
+	if (boost > 100) {
+		return boost;
+	}
+	return int(std::round(Core::App().settings().songVolume() * 100.));
+}
+
+void SetVolumePercent(int percent) {
+	percent = std::clamp(percent, 0, 1000);
+	auto &settings = Core::App().settings();
+	const auto boost = std::max(percent, 100);
+	const auto volume = std::min(percent, 100) / 100.;
+	Extera::Config::Instance().setInt(u"tristegram_song_boost"_q, boost);
+	SetSongBoost(boost);
+	// The mixer takes new gains when the song volume changes.
+	settings.setSongVolume(std::clamp(volume - 0.001, 0., 1.));
+	settings.setSongVolume(volume);
+	Core::App().saveSettingsDelayed();
+}
+
+void PaintSpeakerIcon(QPainter &p, QRectF rect, int percent, QColor color) {
+	auto hq = PainterHighQualityEnabler(p);
+	const auto c = rect.center();
+	const auto s = rect.width() / 2.;
+	p.setPen(Qt::NoPen);
+	p.setBrush(color);
+	auto body = QPainterPath();
+	body.moveTo(c.x() - s * 0.85, c.y() - s * 0.3);
+	body.lineTo(c.x() - s * 0.45, c.y() - s * 0.3);
+	body.lineTo(c.x() + s * 0.05, c.y() - s * 0.75);
+	body.lineTo(c.x() + s * 0.05, c.y() + s * 0.75);
+	body.lineTo(c.x() - s * 0.45, c.y() + s * 0.3);
+	body.lineTo(c.x() - s * 0.85, c.y() + s * 0.3);
+	body.closeSubpath();
+	p.drawPath(body);
+	p.setBrush(Qt::NoBrush);
+	auto pen = QPen(color, std::max(1.5, s * 0.16), Qt::SolidLine, Qt::RoundCap);
+	p.setPen(pen);
+	if (!percent) {
+		p.drawLine(
+			QPointF(c.x() + s * 0.35, c.y() - s * 0.35),
+			QPointF(c.x() + s * 0.95, c.y() + s * 0.35));
+		p.drawLine(
+			QPointF(c.x() + s * 0.95, c.y() - s * 0.35),
+			QPointF(c.x() + s * 0.35, c.y() + s * 0.35));
+		return;
+	}
+	const auto waves = (percent > 100) ? 3 : (percent > 50) ? 2 : 1;
+	for (auto i = 0; i != waves; ++i) {
+		const auto r = s * (0.45 + 0.3 * i);
+		if (i == 2) {
+			// Over 100%: the last wave glows in the logo colors.
+			const auto colors = CurrentLogoStyle();
+			pen.setColor(colors.to);
+			p.setPen(pen);
+		}
+		p.drawArc(
+			QRectF(c.x() - r + s * 0.15, c.y() - r, r * 2, r * 2),
+			-50 * 16,
+			100 * 16);
+	}
+}
+
+// A floating capsule with the volume slider from 0 to 1000%.
+class VolumePopup final : public Ui::RpWidget {
+public:
+	VolumePopup() : RpWidget(nullptr) {
+		setWindowFlags(Qt::Popup
+			| Qt::FramelessWindowHint
+			| Qt::NoDropShadowWindowHint);
+		setAttribute(Qt::WA_TranslucentBackground);
+		setAttribute(Qt::WA_NoSystemBackground);
+		setAttribute(Qt::WA_DeleteOnClose);
+		setMouseTracking(true);
+		resize(Px(300), Px(64));
+	}
+
+protected:
+	void paintEvent(QPaintEvent *e) override {
+		auto p = QPainter(this);
+		auto hq = PainterHighQualityEnabler(p);
+		const auto colors = CurrentLogoStyle();
+		const auto r = QRectF(rect()).marginsRemoved({ 2., 2., 2., 2. });
+		p.setPen(QPen(Alpha(st::windowFg->c, 0.1), 1.));
+		p.setBrush(st::windowBg);
+		p.drawRoundedRect(r, r.height() / 2., r.height() / 2.);
+
+		const auto percent = VolumePercent();
+		PaintSpeakerIcon(
+			p,
+			QRectF(Px(16), (height() - Px(22)) / 2., Px(22), Px(22)),
+			percent,
+			st::windowFg->c);
+		const auto track = trackRect();
+		p.setPen(Qt::NoPen);
+		p.setBrush(Alpha(st::windowFg->c, 0.12));
+		p.drawRoundedRect(track, track.height() / 2., track.height() / 2.);
+		// The usual range and the boost part, marked at 100%.
+		const auto at100 = track.x() + track.width() * 0.1;
+		const auto filled = track.width() * percent / 1000.;
+		auto fill = QLinearGradient(track.topLeft(), track.topRight());
+		fill.setColorAt(0., colors.from);
+		fill.setColorAt(1., colors.to);
+		p.setBrush(fill);
+		p.drawRoundedRect(
+			QRectF(track.x(), track.y(), filled, track.height()),
+			track.height() / 2.,
+			track.height() / 2.);
+		p.setBrush(Alpha(st::windowFg->c, 0.5));
+		p.drawRect(QRectF(at100 - 0.5, track.y() - Px(3), 1., track.height() + Px(6)));
+		const auto knob = QPointF(track.x() + filled, track.center().y());
+		p.setBrush(QColor(255, 255, 255));
+		p.setPen(QPen(colors.to, 2.));
+		p.drawEllipse(knob, Px(8), Px(8));
+
+		p.setPen((percent > 100) ? QPen(colors.to) : QPen(st::windowFg->c));
+		p.setFont(st::semiboldFont);
+		p.drawText(
+			QRect(width() - Px(68), 0, Px(56), height()),
+			Qt::AlignRight | Qt::AlignVCenter,
+			QString::number(percent) + '%');
+	}
+	void mousePressEvent(QMouseEvent *e) override {
+		if (trackRect().marginsAdded({ 6., 14., 6., 14. }).contains(e->pos())) {
+			_dragging = true;
+			applyAt(e->pos().x());
+		}
+	}
+	void mouseMoveEvent(QMouseEvent *e) override {
+		if (_dragging) {
+			applyAt(e->pos().x());
+		}
+	}
+	void mouseReleaseEvent(QMouseEvent *e) override {
+		_dragging = false;
+	}
+	void wheelEvent(QWheelEvent *e) override {
+		const auto delta = e->angleDelta().y();
+		if (delta) {
+			SetVolumePercent(VolumePercent() + ((delta > 0) ? 10 : -10));
+			update();
+		}
+	}
+
+private:
+	[[nodiscard]] QRectF trackRect() const {
+		return QRectF(
+			Px(52),
+			(height() - Px(6)) / 2.,
+			width() - Px(52) - Px(80),
+			Px(6));
+	}
+	void applyAt(int x) {
+		const auto track = trackRect();
+		const auto value = std::clamp(
+			(x - track.x()) / track.width(),
+			0.,
+			1.);
+		auto percent = int(std::round(value * 1000.));
+		// A little stickiness at 100%, so the usual level is easy to hit.
+		if (std::abs(percent - 100) <= 12) {
+			percent = 100;
+		}
+		SetVolumePercent(percent);
+		update();
+	}
+
+	bool _dragging = false;
+
+};
+
 // The capsule in the chat header.
 class NowPlayingPill final : public Ui::RpWidget {
 public:
@@ -3031,31 +3211,35 @@ protected:
 	void mouseMoveEvent(QMouseEvent *e) override;
 	void mousePressEvent(QMouseEvent *e) override;
 	void mouseReleaseEvent(QMouseEvent *e) override;
+	void wheelEvent(QWheelEvent *e) override;
 	void leaveEventHook(QEvent *e) override;
 
 private:
 	enum class Part {
 		None,
 		Body,
+		Previous,
 		Play,
 		Next,
+		Volume,
 	};
 	void updateTrack();
+	void showVolume();
+	[[nodiscard]] QRectF discRect() const;
 	[[nodiscard]] QRectF partRect(Part part) const;
 	[[nodiscard]] Part partAt(QPoint position) const;
 
 	const not_null<Window::SessionController*> _controller;
 	std::optional<Track> _track;
 	Cover _cover;
-	Ui::Animations::Basic _spin;
+	base::Timer _spin;
 	crl::time _lastSpin = 0;
 	double _angle = 0.;
-	crl::time _lastPlayed = 0;
-	double _played = 0.;
-	base::unique_qptr<Ui::PopupMenu> _menu;
 	Part _over = Part::None;
 	Part _pressed = Part::None;
 	Media::Player::TrackState _state;
+	crl::time _volumeShownUntil = 0;
+	QPointer<VolumePopup> _volume;
 
 };
 
@@ -3065,8 +3249,9 @@ NowPlayingPill::NowPlayingPill(
 : RpWidget(parent)
 , _controller(controller)
 , _spin([=] {
+	// 30 frames a second of the record only.
 	if (isVisible()) {
-		update();
+		update(discRect().toAlignedRect().marginsAdded({ 2, 2, 2, 2 }));
 	}
 }) {
 	setMouseTracking(true);
@@ -3101,33 +3286,67 @@ void NowPlayingPill::updateTrack() {
 	_cover.set(current.audio(), current.contextId());
 	const auto playing = IsPlaying()
 		&& !Extera::Bool(u"tristegram_eco"_q);
-	if (playing && !_spin.animating()) {
-		_spin.start();
-	} else if (!playing && _spin.animating()) {
-		_spin.stop();
+	if (playing && !_spin.isActive()) {
+		_spin.callEach(33);
+	} else if (!playing && _spin.isActive()) {
+		_spin.cancel();
 	}
 	update();
 }
 
+void NowPlayingPill::showVolume() {
+	if (_volume) {
+		_volume->close();
+		return;
+	}
+	const auto popup = new VolumePopup();
+	_volume = popup;
+	const auto global = mapToGlobal(QPoint(
+		width() - popup->width(),
+		height() + Px(6)));
+	popup->move(global);
+	popup->show();
+}
+
+QRectF NowPlayingPill::discRect() const {
+	return QRectF(
+		Px(5),
+		(height() - Px(30)) / 2.,
+		Px(30),
+		Px(30));
+}
+
 QRectF NowPlayingPill::partRect(Part part) const {
-	const auto size = Px(28);
-	const auto y = (height() - size) / 2.;
+	const auto small = Px(24);
+	const auto play = Px(28);
+	const auto y = (height() - small) / 2.;
+	const auto volume = QRectF(width() - Px(6) - small, y, small, small);
+	const auto next = volume.translated(-small - Px(1), 0);
+	const auto playRect = QRectF(
+		next.x() - play - Px(1),
+		(height() - play) / 2.,
+		play,
+		play);
+	const auto previous = QRectF(playRect.x() - small - Px(1), y, small, small);
 	switch (part) {
-	case Part::Next:
-		return QRectF(width() - Px(6) - size, y, size, size);
-	case Part::Play:
-		return QRectF(width() - Px(6) - size * 2 - Px(2), y, size, size);
-	case Part::Body:
-		return QRectF(rect());
-	case Part::None:
-		break;
+	case Part::Volume: return volume;
+	case Part::Next: return next;
+	case Part::Play: return playRect;
+	case Part::Previous: return previous;
+	case Part::Body: return QRectF(rect());
+	case Part::None: break;
 	}
 	return QRectF();
 }
 
 NowPlayingPill::Part NowPlayingPill::partAt(QPoint position) const {
+	for (const auto part : { Part::Volume }) {
+		if (partRect(part).contains(position)) {
+			return part;
+		}
+	}
 	if (_track) {
-		for (const auto part : { Part::Play, Part::Next }) {
+		for (const auto part : { Part::Previous, Part::Play, Part::Next }) {
 			if (partRect(part).contains(position)) {
 				return part;
 			}
@@ -3148,6 +3367,20 @@ void NowPlayingPill::mouseMoveEvent(QMouseEvent *e) {
 void NowPlayingPill::leaveEventHook(QEvent *e) {
 	_over = Part::None;
 	update();
+}
+
+void NowPlayingPill::wheelEvent(QWheelEvent *e) {
+	const auto delta = e->angleDelta().y();
+	if (!delta) {
+		return;
+	}
+	SetVolumePercent(VolumePercent() + ((delta > 0) ? 10 : -10));
+	_volumeShownUntil = crl::now() + 1200;
+	update();
+	base::call_delayed(1300, this, [=] { update(); });
+	if (_volume) {
+		_volume->update();
+	}
 }
 
 void NowPlayingPill::mousePressEvent(QMouseEvent *e) {
@@ -3171,6 +3404,14 @@ void NowPlayingPill::mouseReleaseEvent(QMouseEvent *e) {
 			instance->next(Type::Song);
 		}
 		break;
+	case Part::Previous:
+		if (!Library::Instance().queueStep(-1)) {
+			instance->previous(Type::Song);
+		}
+		break;
+	case Part::Volume:
+		showVolume();
+		break;
 	case Part::Body:
 		ShowMusicWindow(_controller);
 		break;
@@ -3185,27 +3426,36 @@ void NowPlayingPill::paintEvent(QPaintEvent *e) {
 	const auto colors = CurrentLogoStyle();
 	const auto r = QRectF(rect()).marginsRemoved({ 0.5, 0.5, 0.5, 0.5 });
 	const auto radius = r.height() / 2.;
+	const auto playing = IsPlaying();
 
-	// A glassy capsule with a hint of the logo colors.
+	// A glass capsule, the logo colors flow along it while music plays.
 	p.setPen(Qt::NoPen);
 	p.setBrush(Alpha(st::windowFg->c, _over == Part::Body ? 0.09 : 0.06));
 	p.drawRoundedRect(r, radius, radius);
 	if (_track) {
 		auto wash = QLinearGradient(r.topLeft(), r.topRight());
-		wash.setColorAt(0., Alpha(colors.from, 0.22));
-		wash.setColorAt(1., Alpha(colors.to, 0.04));
+		wash.setColorAt(0., Alpha(colors.from, 0.26));
+		wash.setColorAt(0.6, Alpha(colors.to, 0.10));
+		wash.setColorAt(1., Alpha(colors.to, 0.02));
 		p.setBrush(wash);
 		p.drawRoundedRect(r, radius, radius);
 	}
+	auto rim = QLinearGradient(r.topLeft(), r.topRight());
+	rim.setColorAt(0., Alpha(colors.from, _track ? 0.55 : 0.15));
+	rim.setColorAt(1., Alpha(colors.to, _track ? 0.25 : 0.08));
 	p.setBrush(Qt::NoBrush);
-	p.setPen(QPen(Alpha(st::windowFg->c, 0.08), 1.));
+	p.setPen(QPen(QBrush(rim), 1.));
 	p.drawRoundedRect(r, radius, radius);
 
-	const auto disc = QRectF(
-		Px(4),
-		(height() - Px(30)) / 2.,
-		Px(30),
-		Px(30));
+	const auto disc = discRect();
+	if (playing) {
+		auto glow = QRadialGradient(disc.center(), disc.width() * 0.75);
+		glow.setColorAt(0., Alpha(colors.from, 0.45));
+		glow.setColorAt(1., Alpha(colors.from, 0.));
+		p.setPen(Qt::NoPen);
+		p.setBrush(glow);
+		p.drawEllipse(disc.center(), disc.width() * 0.75, disc.width() * 0.75);
+	}
 	PaintVinyl(
 		p,
 		disc,
@@ -3214,19 +3464,24 @@ void NowPlayingPill::paintEvent(QPaintEvent *e) {
 		_track ? _track->document : 0);
 
 	const auto left = int(disc.right()) + Px(8);
-	const auto right = _track
-		? int(partRect(Part::Play).x()) - Px(4)
-		: width() - Px(12);
+	const auto right = int(partRect(_track ? Part::Previous : Part::Volume).x())
+		- Px(4);
 	const auto available = std::max(right - left, Px(20));
 	const auto small = Font(11);
-	const auto title = _track ? _track->title : tr::lng_tgm_title(tr::now);
+	const auto showVolume = (crl::now() < _volumeShownUntil);
+	const auto title = showVolume
+		? (tr::lng_tgm_volume(tr::now) + u" "_q
+			+ QString::number(VolumePercent()) + '%')
+		: _track
+		? _track->title
+		: tr::lng_tgm_title(tr::now);
 	const auto sub = !_track
 		? tr::lng_tgm_pill_hint(tr::now)
 		: _track->performer.isEmpty()
 		? tr::lng_tgm_unknown_artist(tr::now)
 		: _track->performer;
 	const auto titleHeight = st::semiboldFont->height;
-	const auto blockTop = (height() - titleHeight - small->height) / 2;
+	const auto blockTop = (height() - titleHeight - small->height - Px(5)) / 2;
 	p.setFont(st::semiboldFont);
 	p.setPen(st::windowBoldFg);
 	p.drawText(
@@ -3240,27 +3495,80 @@ void NowPlayingPill::paintEvent(QPaintEvent *e) {
 		Qt::AlignLeft | Qt::AlignVCenter,
 		small->elided(sub, available));
 
+	// A thin line of how much of the song has played.
 	if (_track) {
-		for (const auto part : { Part::Play, Part::Next }) {
-			const auto rect = partRect(part);
-			if (_over == part) {
-				p.setPen(Qt::NoPen);
-				p.setBrush(Alpha(st::windowFg->c, 0.1));
-				p.drawEllipse(rect);
-			}
-			const auto inner = rect.marginsRemoved(QMarginsF(Px(7), Px(7), Px(7), Px(7)));
-			if (part == Part::Play) {
-				PaintPlayIcon(p, inner, IsPlaying(), st::windowFg->c);
-			} else {
-				PaintSkipIcon(p, inner, true, st::windowFg->c);
-			}
-		}
+		const auto total = (_state.length > 0 && _state.frequency > 0)
+			? (_state.length * 1000 / _state.frequency)
+			: crl::time(_track->duration) * 1000;
+		const auto position = (_state.frequency > 0)
+			? (_state.position * 1000 / _state.frequency)
+			: 0;
+		const auto progress = (total > 0)
+			? std::clamp(position / double(total), 0., 1.)
+			: 0.;
+		const auto line = QRectF(
+			left,
+			blockTop + titleHeight + small->height + Px(3),
+			available,
+			Px(2));
+		p.setPen(Qt::NoPen);
+		p.setBrush(Alpha(st::windowFg->c, 0.12));
+		p.drawRoundedRect(line, Px(1), Px(1));
+		auto fill = QLinearGradient(line.topLeft(), line.topRight());
+		fill.setColorAt(0., colors.from);
+		fill.setColorAt(1., colors.to);
+		p.setBrush(fill);
+		p.drawRoundedRect(
+			QRectF(line.x(), line.y(), line.width() * progress, line.height()),
+			Px(1),
+			Px(1));
 	}
+
+	const auto paintHover = [&](Part part) {
+		if (_over == part) {
+			p.setPen(Qt::NoPen);
+			p.setBrush(Alpha(st::windowFg->c, 0.1));
+			p.drawEllipse(partRect(part));
+		}
+	};
+	if (_track) {
+		for (const auto part : { Part::Previous, Part::Next }) {
+			paintHover(part);
+			PaintSkipIcon(
+				p,
+				partRect(part).marginsRemoved(QMarginsF(Px(6), Px(6), Px(6), Px(6))),
+				(part == Part::Next),
+				st::windowFg->c);
+		}
+		const auto play = partRect(Part::Play);
+		auto fill = QLinearGradient(play.topLeft(), play.bottomRight());
+		fill.setColorAt(0., colors.from);
+		fill.setColorAt(1., colors.to);
+		p.setPen(Qt::NoPen);
+		p.setBrush(fill);
+		p.drawEllipse(play);
+		if (_over == Part::Play) {
+			p.setBrush(QColor(255, 255, 255, 40));
+			p.drawEllipse(play);
+		}
+		PaintPlayIcon(
+			p,
+			play.marginsRemoved(QMarginsF(Px(8), Px(8), Px(8), Px(8))),
+			playing,
+			QColor(255, 255, 255));
+	}
+	paintHover(Part::Volume);
+	PaintSpeakerIcon(
+		p,
+		partRect(Part::Volume).marginsRemoved(QMarginsF(Px(5), Px(5), Px(5), Px(5))),
+		VolumePercent(),
+		st::windowFg->c);
 }
 
 } // namespace
 
 void StartMusicTracking() {
+	SetSongBoost(Extera::Int(u"tristegram_song_boost"_q));
 	Library::Instance().ensureTracking();
 }
 

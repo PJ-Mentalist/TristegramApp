@@ -1494,30 +1494,54 @@ void TopBarWidget::updateControlsGeometry() {
 		_leftTaken = left + _info->width();
 	}
 
-	// Tristegram: the music capsule in the free space on the left.
-	if (centered && Extera::Bool(u"tristegram_header_music"_q)) {
+	// Tristegram: the music capsule, on the left of the centered header
+	// or on the right before the buttons.
+	const auto musicShown = Extera::Bool(u"tristegram_header_music"_q)
+		&& _info
+		&& !_searchField
+		&& !_chooseForReportReason
+		&& (_narrowRatio == 0.)
+		&& (_activeChat.section == Section::History);
+	if (musicShown) {
 		if (!_tristegramMusic) {
 			_tristegramMusic = Tristegram::CreateNowPlayingPill(
 				this,
 				_controller);
 		}
 		const auto skip = style::ConvertScale(10);
-		const auto from = (_back->isHidden() ? 0 : (_back->x() + _back->width()))
-			+ skip;
-		const auto infoLeft = _info->x();
-		const auto pillWidth = std::min(
-			style::ConvertScale(250),
-			infoLeft - skip - from);
 		const auto pillHeight = std::min(
 			style::ConvertScale(42),
 			height() - style::ConvertScale(8));
-		const auto fits = (pillWidth >= style::ConvertScale(150));
-		if (fits) {
-			_tristegramMusic->setGeometry(
-				from,
-				(height() - pillHeight) / 2,
-				pillWidth,
-				pillHeight);
+		auto fits = false;
+		if (centered) {
+			const auto from = (_back->isHidden()
+				? 0
+				: (_back->x() + _back->width())) + skip;
+			const auto pillWidth = std::min(
+				style::ConvertScale(310),
+				_info->x() - skip - from);
+			fits = (pillWidth >= style::ConvertScale(200));
+			if (fits) {
+				_tristegramMusic->setGeometry(
+					from,
+					(height() - pillHeight) / 2,
+					pillWidth,
+					pillHeight);
+			}
+		} else {
+			const auto right = width() - _rightTaken - skip;
+			const auto pillWidth = std::min(
+				style::ConvertScale(310),
+				right - _leftTaken - style::ConvertScale(160));
+			fits = (pillWidth >= style::ConvertScale(200));
+			if (fits) {
+				_tristegramMusic->setGeometry(
+					right - pillWidth,
+					(height() - pillHeight) / 2,
+					pillWidth,
+					pillHeight);
+				_rightTaken += pillWidth + skip;
+			}
 		}
 		// Hidden while messages are selected: Forward and Delete go there.
 		_tristegramMusic->setVisible(fits
@@ -2240,10 +2264,14 @@ void TopBarWidget::updateOnlineDisplay() {
 	if (_tristegramActivityKind != activityKind) {
 		_tristegramActivityKind = activityKind;
 		if (activityKind.isEmpty()) {
-			_tristegramActivityAnimation.stop();
-		} else if (!_tristegramActivityAnimation.animating()) {
-			_tristegramActivityAnimation.init([=] { update(); });
-			_tristegramActivityAnimation.start();
+			_tristegramActivityTimer.cancel();
+		} else if (!_tristegramActivityTimer.isActive()) {
+			// 15 frames a second of the status line only, not the bar.
+			_tristegramActivityTimer.setCallback([=] {
+				const auto half = st::topBarHeight / 2;
+				update(0, half, width(), height() - half);
+			});
+			_tristegramActivityTimer.callEach(66);
 		}
 		update();
 	}

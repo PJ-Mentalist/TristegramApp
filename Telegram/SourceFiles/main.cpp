@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "core/launcher.h"
 
+#include "extera/tristegram_crash.h"
+
 extern "C" {
 #include <openssl/crypto.h>
 } // extern "C"
@@ -18,6 +20,9 @@ int main(int argc, char *argv[]) {
 	// Suppressing that registration leaves the library state alive until the
 	// process exits, which is the trade we want: the OS reclaims it anyway.
 	OPENSSL_init_crypto(OPENSSL_INIT_NO_ATEXIT, nullptr);
+
+	// Tristegram: write a short crash log next to the app.
+	Tristegram::InstallCrashLog();
 
 	const auto launcher = Core::Launcher::Create(argc, argv);
 	return launcher ? launcher->exec() : 1;

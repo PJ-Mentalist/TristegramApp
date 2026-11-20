@@ -322,6 +322,19 @@ struct Game {
 			}
 		} while (Process32NextW(snapshot, &entry));
 	}
+	// Looking into every process path is the expensive part, do it
+	// rarely and remember what was found.
+	static auto storeCheckedAt = crl::time(0);
+	static auto storeGame = std::optional<Game>();
+	const auto now = crl::now();
+	if (!result && storeCheckedAt && now - storeCheckedAt < 120'000) {
+		CloseHandle(snapshot);
+		return storeGame;
+	}
+	if (!result) {
+		storeCheckedAt = now;
+		storeGame = std::nullopt;
+	}
 	if (!result && Process32FirstW(snapshot, &entry)) {
 		do {
 			const auto exe = QString::fromWCharArray(entry.szExeFile).toLower();
@@ -331,6 +344,7 @@ struct Game {
 				if (!StoreGameName(path).isEmpty()) {
 					result = DetectGame(exe, path, QString());
 					if (result) {
+						storeGame = result;
 						break;
 					}
 				}
