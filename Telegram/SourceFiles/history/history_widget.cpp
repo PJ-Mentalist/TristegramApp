@@ -8,6 +8,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/history_widget.h"
 
 #include "extera/tristegram_hotkeys.h"
+#include "extera/tristegram_motion.h"
+#include "extera/tristegram_sounds.h"
 
 #include "extera/tristegram_templates.h"
 #include "ui/layers/generic_box.h"
@@ -3454,6 +3456,13 @@ void HistoryWidget::showHistory(
 	controller()->sendingAnimation().clear();
 	_topToast.hide(anim::type::instant);
 	_hiddenSenderTooltip.hide();
+	if (peerId && (!_peer || _peer->id != peerId)) {
+		// Tristegram: a sound and a transition between chats.
+		Tristegram::Sounds::Play(Tristegram::Sounds::Event::Open);
+		if (_peer) {
+			Tristegram::PrepareChatTransition(this);
+		}
+	}
 	if (_history) {
 		if (_peer->id == peerId) {
 			updateForwarding();
@@ -6091,6 +6100,7 @@ void HistoryWidget::send(Api::SendOptions options) {
 	if (!_history) {
 		return;
 	}
+	Tristegram::Sounds::Play(Tristegram::Sounds::Event::Send);
 	if (const auto value = Extera::InlineMathValue(_field->getLastText())) {
 		auto cursor = _field->textCursor();
 		cursor.movePosition(QTextCursor::End);

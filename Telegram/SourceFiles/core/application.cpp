@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "extera/tristegram_icons.h"
 #include "extera/tristegram_hotkeys.h"
+#include "extera/tristegram_cursor.h"
 #include "extera/tristegram_activity.h"
 #include "extera/tristegram_music.h"
 
@@ -276,6 +277,7 @@ Application::Application()
 			u"sticker_time"_q,
 			u"name_accent"_q,
 			u"tristegram_name_mode"_q,
+			u"tristegram_bubble_style"_q,
 			u"tristegram_name_c1"_q,
 			u"tristegram_name_c2"_q,
 			u"online_indicator"_q,
@@ -667,6 +669,7 @@ void Application::run() {
 	}, _lifetime);
 	Ui::Accessible::Init();
 	Tristegram::InstallInputEffects();
+	Tristegram::InstallCursorEffect();
 	Ui::InitTextOptions();
 	Ui::StartCachedCorners();
 	Ui::Emoji::Init();

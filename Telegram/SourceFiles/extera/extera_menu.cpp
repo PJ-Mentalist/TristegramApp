@@ -29,6 +29,7 @@
 #include "extera/extera_utils.h"
 #include "extera/extera_plugins_ui.h"
 #include "extera/tristegram_music.h"
+#include "extera/tristegram_custom.h"
 #include "history/history.h"
 #include "history/history_item.h"
 #include "history/history_item_components.h"
@@ -550,6 +551,61 @@ void AddMessageMenuActions(
 	Plugins::AddMessageMenuItems(menu, item);
 	Tristegram::AddPlaylistMenuActions(menu, item);
 	Tristegram::AddShareImportActions(menu, item, controller);
+	if (item->allowsForward()) {
+		// Tristegram: a reminder is the message forwarded to Saved
+		// Messages as a scheduled one, Telegram itself notifies then.
+		const auto action = menu->addAction(
+			tr::lng_tgr_remind(tr::now),
+			[] {},
+			&st::menuIconSchedule);
+		action->setMenu(Ui::CreateChild<QMenu>(menu->menu().get()));
+		const auto submenu = menu->ensureSubmenu(
+			action,
+			st::popupMenuWithIcons);
+		const auto remind = [=](TimeId when) {
+			const auto item = session->data().message(itemId);
+			if (!item || when <= base::unixtime::now()) {
+				return;
+			}
+			const auto self = session->data().history(session->userPeerId());
+			auto sendAction = Api::SendAction(self);
+			sendAction.options.scheduled = when;
+			session->api().forwardMessages(
+				Data::ResolvedForwardDraft{ .items = { item } },
+				sendAction);
+			controller->showToast(tr::lng_tgr_remind_set(
+				tr::now,
+				lt_time,
+				QLocale().toString(
+					base::unixtime::parse(when),
+					QLocale::ShortFormat)));
+		};
+		const auto after = [=](int minutes) {
+			return [=] { remind(base::unixtime::now() + minutes * 60); };
+		};
+		submenu->addAction(tr::lng_tgr_remind_30m(tr::now), after(30));
+		submenu->addAction(tr::lng_tgr_remind_1h(tr::now), after(60));
+		submenu->addAction(tr::lng_tgr_remind_3h(tr::now), after(180));
+		submenu->addAction(tr::lng_tgr_remind_tomorrow(tr::now), [=] {
+			const auto tomorrow = QDateTime(
+				QDate::currentDate().addDays(1),
+				QTime(9, 0));
+			remind(TimeId(tomorrow.toSecsSinceEpoch()));
+		});
+		submenu->addAction(tr::lng_tgr_remind_custom(tr::now), [=] {
+			Tristegram::AskText(
+				controller,
+				tr::lng_tgr_remind(tr::now),
+				tr::lng_tgr_remind_minutes(tr::now),
+				u"15"_q,
+				[=](QString value) {
+					const auto minutes = value.trimmed().toInt();
+					if (minutes > 0 && minutes <= 525600) {
+						remind(base::unixtime::now() + minutes * 60);
+					}
+				});
+		});
+	}
 	if (Bool(u"menu_details"_q)) {
 		const auto action = menu->addAction(
 			tr::lng_extera_menu_details(tr::now),

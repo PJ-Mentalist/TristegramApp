@@ -12,6 +12,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "extera/extera_config.h"
 #include "extera/tristegram_custom.h"
 #include "extera/tristegram_activity.h"
+#include "extera/tristegram_sounds.h"
 #include "core/file_utilities.h"
 #include "extera/tristegram_cleaner.h"
 #include "extera/tristegram_custom_ui.h"
@@ -1251,6 +1252,20 @@ void FillThemes(
 		.configKey = u"tristegram_bubble_c1"_q,
 	});
 	AddNote(content, tr::lng_tgs_grad_note(tr::now));
+	AddLabel(content, tr::lng_tgs_bubble_style(tr::now));
+	AddSegments(
+		content,
+		{
+			tr::lng_tgs_bubble_usual(tr::now),
+			tr::lng_tgs_bubble_glass(tr::now),
+			tr::lng_tgs_bubble_neon(tr::now),
+			tr::lng_tgs_bubble_paper(tr::now),
+			tr::lng_tgs_bubble_pixel(tr::now),
+		},
+		std::clamp(Extera::Int(u"tristegram_bubble_style"_q), 0, 4),
+		[](int index) {
+			Config().setInt(u"tristegram_bubble_style"_q, index);
+		});
 	FillCustomThemes(content, controller);
 }
 
@@ -1555,6 +1570,49 @@ void FillAnimations(not_null<Ui::VerticalLayout*> content) {
 		AddConfigToggle(group, tr::lng_tristegram_logo_shift(tr::now), u"tristegram_logo_shift"_q);
 	}
 	AddNote(content, tr::lng_tgs_animations_note(tr::now));
+
+	// Tristegram: transitions, the cursor, sounds and the dock.
+	AddLabel(content, tr::lng_tgs_transition(tr::now));
+	AddSegments(
+		content,
+		{
+			tr::lng_tgs_effect_none(tr::now),
+			tr::lng_tgs_transition_slide(tr::now),
+			tr::lng_tgs_transition_fade(tr::now),
+			tr::lng_tgs_transition_scale(tr::now),
+			tr::lng_tgs_transition_flip(tr::now),
+		},
+		std::clamp(Extera::Int(u"tristegram_transition"_q), 0, 4),
+		[](int index) {
+			Config().setInt(u"tristegram_transition"_q, index);
+		});
+	AddLabel(content, tr::lng_tgs_cursor(tr::now));
+	AddSegments(
+		content,
+		{
+			tr::lng_tgs_effect_none(tr::now),
+			tr::lng_tgs_cursor_trail(tr::now),
+			tr::lng_tgs_cursor_dot(tr::now),
+			tr::lng_tgs_cursor_ring(tr::now),
+		},
+		std::clamp(Extera::Int(u"tristegram_cursor"_q), 0, 3),
+		[](int index) {
+			Config().setInt(u"tristegram_cursor"_q, index);
+		});
+	AddLabel(content, tr::lng_tgs_sounds(tr::now));
+	AddSegments(
+		content,
+		Tristegram::Sounds::PackNames(),
+		std::clamp(Extera::Int(u"tristegram_sounds"_q), 0, 4),
+		[](int index) {
+			Config().setInt(u"tristegram_sounds"_q, index);
+			Tristegram::Sounds::Play(Tristegram::Sounds::Event::Send);
+		});
+	{
+		const auto group = AddGroup(content);
+		AddConfigToggle(group, tr::lng_tgs_dock(tr::now), u"tristegram_dock"_q);
+	}
+	AddNote(content, tr::lng_tgs_motion_note(tr::now));
 
 }
 

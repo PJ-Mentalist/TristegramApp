@@ -7,6 +7,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "ui/chat/message_bubble.h"
 
+#include "extera/extera_config.h"
+#include "extera/tristegram_logo.h"
+#include "ui/painter.h"
+#include <QtGui/QPainterPath>
+
 #include "ui/cached_round_corners.h"
 #include "ui/image/image_prepare.h"
 #include "ui/chat/chat_style.h"
@@ -349,7 +354,111 @@ void FinishBubblePatternOnMain(not_null<BubblePattern*> pattern) {
 		QImage::Format_ARGB32_Premultiplied);
 }
 
+// Tristegram: bubble looks, "tristegram_bubble_style":
+// 1 glass, 2 neon, 3 paper, 4 pixel.
+[[nodiscard]] bool PaintStyledBubble(QPainter &p, const SimpleBubble &args) {
+	const auto style = Extera::Int(u"tristegram_bubble_style"_q);
+	if (style <= 0 || style > 4 || args.selected) {
+		return false;
+	}
+	const auto &stm = args.st->messageStyle(args.outbg, false);
+	const auto base = stm.msgBg->c;
+	const auto rect = QRectF(args.geometry);
+	const auto radius = double(st::bubbleRadiusLarge);
+	auto hq = PainterHighQualityEnabler(p);
+	p.save();
+	p.setPen(Qt::NoPen);
+	switch (style) {
+	case 1: { // Glass: the background shows through, a light rim.
+		auto fill = base;
+		fill.setAlphaF(0.55);
+		p.setBrush(fill);
+		p.drawRoundedRect(rect, radius, radius);
+		auto sheen = QLinearGradient(rect.topLeft(), rect.bottomLeft());
+		sheen.setColorAt(0., QColor(255, 255, 255, 46));
+		sheen.setColorAt(0.45, QColor(255, 255, 255, 0));
+		p.setBrush(sheen);
+		p.drawRoundedRect(rect, radius, radius);
+		p.setBrush(Qt::NoBrush);
+		p.setPen(QPen(QColor(255, 255, 255, 50), 1.));
+		p.drawRoundedRect(rect.marginsRemoved({ 0.5, 0.5, 0.5, 0.5 }), radius, radius);
+	} break;
+	case 2: { // Neon: a dark body and a glowing outline.
+		const auto logo = Tristegram::CurrentLogoStyle();
+		auto glowColor = args.outbg ? logo.from : logo.to;
+		for (auto i = 3; i != 0; --i) {
+			auto c = glowColor;
+			c.setAlphaF(0.08 * (4 - i));
+			p.setBrush(Qt::NoBrush);
+			p.setPen(QPen(c, 2. * i + 1.));
+			p.drawRoundedRect(rect, radius, radius);
+		}
+		auto body = base.darker(135);
+		body.setAlphaF(0.92);
+		p.setPen(Qt::NoPen);
+		p.setBrush(body);
+		p.drawRoundedRect(rect, radius, radius);
+		auto outline = QLinearGradient(rect.topLeft(), rect.bottomRight());
+		outline.setColorAt(0., logo.from);
+		outline.setColorAt(1., logo.to);
+		p.setBrush(Qt::NoBrush);
+		p.setPen(QPen(QBrush(outline), 1.6));
+		p.drawRoundedRect(rect.marginsRemoved({ 0.8, 0.8, 0.8, 0.8 }), radius, radius);
+	} break;
+	case 3: { // Paper: a warm sheet with a soft shadow.
+		const auto warm = QColor(0xE8, 0xD5, 0xA8);
+		const auto mix = [&](int a, int b) { return a + (b - a) * 22 / 100; };
+		const auto paper = QColor(
+			mix(base.red(), warm.red()),
+			mix(base.green(), warm.green()),
+			mix(base.blue(), warm.blue()));
+		p.setBrush(QColor(0, 0, 0, 38));
+		p.drawRoundedRect(rect.translated(0., 2.), radius * 0.4, radius * 0.4);
+		p.setBrush(paper);
+		p.drawRoundedRect(rect, radius * 0.4, radius * 0.4);
+		p.setBrush(Qt::NoBrush);
+		p.setPen(QPen(QColor(0x8A, 0x6D, 0x3B, 60), 1.));
+		p.drawRoundedRect(rect.marginsRemoved({ 0.5, 0.5, 0.5, 0.5 }), radius * 0.4, radius * 0.4);
+		// A folded corner.
+		const auto fold = std::min(rect.height(), rect.width()) * 0.18;
+		auto corner = QPainterPath();
+		corner.moveTo(rect.right() - fold, rect.top());
+		corner.lineTo(rect.right(), rect.top() + fold);
+		corner.lineTo(rect.right() - fold, rect.top() + fold);
+		corner.closeSubpath();
+		p.setPen(Qt::NoPen);
+		p.setBrush(paper.darker(112));
+		p.drawPath(corner);
+	} break;
+	case 4: { // Pixel: stepped corners and a hard shadow.
+		const auto step = std::max(2., std::round(radius / 4.));
+		const auto r = rect.toAlignedRect();
+		auto shape = QPainterPath();
+		const auto addShape = [&](QRectF b) {
+			auto path = QPainterPath();
+			path.addRect(b.adjusted(step * 2, 0, -step * 2, 0));
+			path.addRect(b.adjusted(step, step, -step, -step));
+			path.addRect(b.adjusted(0, step * 2, 0, -step * 2));
+			return path.simplified();
+		};
+		p.setBrush(base.darker(170));
+		p.drawPath(addShape(QRectF(r).translated(step, step)));
+		shape = addShape(QRectF(r));
+		p.setBrush(base);
+		p.drawPath(shape);
+		p.setBrush(Qt::NoBrush);
+		p.setPen(QPen(base.darker(150), step / 2.));
+		p.drawPath(shape);
+	} break;
+	}
+	p.restore();
+	return true;
+}
+
 void PaintBubble(QPainter &p, const SimpleBubble &args) {
+	if (PaintStyledBubble(p, args)) {
+		return;
+	}
 	if (UsePatternBubble(args)) {
 		PaintPatternBubble(p, args);
 	} else {

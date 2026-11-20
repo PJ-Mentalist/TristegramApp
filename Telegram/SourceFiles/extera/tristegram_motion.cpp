@@ -12,6 +12,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "ui/painter.h"
 #include "ui/rp_widget.h"
 #include "ui/ui_utility.h"
+#include "ui/widgets/popup_menu.h"
 #include "base/event_filter.h"
 #include "window/window_controller.h"
 #include "styles/style_basic.h"
@@ -61,7 +62,15 @@ void PrepareThemeFade() {
 		|| body->height() <= 0) {
 		return;
 	}
-	auto picture = Ui::GrabWidget(body);
+	// From the screen, not by drawing the widgets again: some of them
+	// do not survive being drawn into a picture.
+	auto grabbed = QRect();
+	const auto global = QRect(body->mapToGlobal(QPoint()), body->size());
+	const auto image = Ui::PopupMenu::GrabScreen(global, &grabbed);
+	if (image.isNull() || grabbed != global) {
+		return;
+	}
+	const auto picture = QPixmap::fromImage(image);
 	if (CurrentFade) {
 		delete CurrentFade.data();
 	}
@@ -83,6 +92,73 @@ void PrepareThemeFade() {
 			raw->deleteLater();
 		}
 	}, 1., 0., kFadeDuration, anim::easeOutCirc);
+}
+
+void PrepareChatTransition(not_null<QWidget*> widget) {
+	const auto kind = Extera::Int(u"tristegram_transition"_q);
+	if (kind <= 0
+		|| kind > 4
+		|| Extera::Bool(u"tristegram_eco"_q)
+		|| !widget->isVisible()
+		|| widget->width() <= 0
+		|| widget->height() <= 0) {
+		return;
+	}
+	auto grabbed = QRect();
+	const auto global = QRect(widget->mapToGlobal(QPoint()), widget->size());
+	const auto image = Ui::PopupMenu::GrabScreen(global, &grabbed);
+	if (image.isNull() || grabbed != global) {
+		return;
+	}
+	const auto picture = QPixmap::fromImage(image);
+	const auto raw = MakeOverlay(widget);
+	const auto animation = raw->lifetime().make_state<
+		Ui::Animations::Simple>();
+	raw->paintRequest() | rpl::on_next([=] {
+		const auto t = animation->value(0.);
+		auto p = QPainter(raw);
+		auto hq = PainterHighQualityEnabler(p);
+		const auto w = raw->width();
+		const auto h = raw->height();
+		switch (kind) {
+		case 1: { // Slide: the old chat goes left.
+			p.setOpacity(1. - t * 0.6);
+			p.drawPixmap(QPointF(-w * 0.35 * t, 0.), picture);
+		} break;
+		case 2: { // Fade.
+			p.setOpacity(1. - t);
+			p.drawPixmap(0, 0, picture);
+		} break;
+		case 3: { // Scale: the old chat shrinks into the screen.
+			const auto scale = 1. - 0.12 * t;
+			p.setOpacity(1. - t);
+			p.translate(w / 2., h / 2.);
+			p.scale(scale, scale);
+			p.translate(-w / 2., -h / 2.);
+			p.drawPixmap(0, 0, picture);
+		} break;
+		case 4: { // Flip: the old chat turns away like a page.
+			auto transform = QTransform();
+			transform.translate(0., h / 2.);
+			transform.rotate(-88. * t, Qt::YAxis);
+			transform.translate(0., -h / 2.);
+			p.setTransform(transform);
+			p.setOpacity(1. - t * 0.5);
+			p.drawPixmap(0, 0, picture);
+		} break;
+		}
+	}, raw->lifetime());
+	raw->show();
+	raw->raise();
+	// The new chat may put its parts on top, stay above them.
+	crl::on_main(raw, [=] { raw->raise(); });
+	animation->start([=] {
+		raw->update();
+		if (!animation->animating()) {
+			raw->hide();
+			raw->deleteLater();
+		}
+	}, 0., 1., (kind == 4) ? 320 : 240, anim::easeOutCirc);
 }
 
 void ShowSplash(not_null<QWidget*> parent) {

@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "mainwidget.h"
 
 #include "extera/extera_config.h"
+#include "extera/tristegram_dock.h"
 
 #include "api/api_updates.h"
 #include "api/api_views.h"
@@ -292,6 +293,8 @@ MainWidget::MainWidget(
 , _changelogs(Core::Changelogs::Create(&controller->session())) {
 	if (_dialogs) {
 		setupConnectingWidget();
+		// Tristegram: the dock with folders and pinned chats.
+		Tristegram::InstallDock(this, controller);
 	}
 
 	_history->cancelRequests(
