@@ -15,6 +15,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "extera/extera_plugins_ui.h"
 #include "extera/tristegram_downloads.h"
 #include "extera/tristegram_music.h"
+#include "extera/tristegram_activity_ui.h"
 #include "core/version.h"
 
 #include "apiwrap.h"
@@ -895,6 +896,14 @@ void MainMenu::setupMenu() {
 		Tristegram::ShowMusicWindow(controller);
 	});
 	tag("music");
+
+	addAction(
+		tr::lng_tgac_title(),
+		{ &st::menuIconStats }
+	)->setClickedCallback([=] {
+		Tristegram::ShowActivityWindow(controller);
+	});
+	tag("activity");
 
 	const auto streamer = addAction(
 		tr::lng_extera_streamer_mode(),

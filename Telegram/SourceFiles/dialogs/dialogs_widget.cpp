@@ -15,6 +15,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "extera/tristegram_bar.h"
 #include "extera/tristegram_downloads.h"
 #include "extera/tristegram_cleaner.h"
+#include "extera/tristegram_activity_ui.h"
 
 #include "base/call_delayed.h"
 #include "base/qt/qt_key_modifiers.h"
@@ -4650,6 +4651,24 @@ void Widget::updateControlsGeometry() {
 		- filterLeft
 		- filterRight;
 	const auto filterAreaHeight = st::topBarHeight;
+
+	// Tristegram: what I play or listen to, at the bottom of the list.
+	if (_layout != Layout::Child) {
+		auto chip = findChild<QWidget*>(u"tristegramActivityChip"_q);
+		if (!chip) {
+			auto created = Tristegram::CreateActivityChip(this, controller());
+			chip = created.release();
+			chip->setObjectName(u"tristegramActivityChip"_q);
+		}
+		const auto inset = style::ConvertScale(10);
+		const auto chipHeight = style::ConvertScale(40);
+		chip->setGeometry(
+			inset,
+			height() - chipHeight - inset,
+			std::max(ratiow - 2 * inset, 1),
+			chipHeight);
+		chip->setProperty("tristegramAllowed", narrowRatio == 0.);
+	}
 
 	// Tristegram: chat tools next to the search, where the stories were.
 	{

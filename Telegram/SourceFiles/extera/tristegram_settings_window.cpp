@@ -2015,6 +2015,10 @@ void FillPrivacy(
 			group,
 			tr::lng_tga_show(tr::now),
 			u"tristegram_activity_show"_q);
+		AddConfigToggle(
+			group,
+			tr::lng_tga_chip(tr::now),
+			u"tristegram_activity_chip"_q);
 	}
 	AddNote(content, tr::lng_tga_note(tr::now));
 	AddLabel(content, tr::lng_tga_games(tr::now));

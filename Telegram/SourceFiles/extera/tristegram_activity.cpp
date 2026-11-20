@@ -19,6 +19,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "media/audio/media_audio.h"
 #include "media/player/media_player_instance.h"
 
+#include <QtCore/QDate>
 #include <QtCore/QDir>
 #include <QtCore/QFileInfo>
 #include <QtCore/QJsonArray>
@@ -57,6 +58,15 @@ struct State {
 	QString lastSent;
 	crl::time lastSentAt = 0;
 	bool reporting = false;
+
+	// Local statistics of my own activity.
+	std::optional<Status> own;
+	crl::time ownSince = 0;
+	crl::time trackedAt = 0;
+	crl::time savedAt = 0;
+	bool statsLoaded = false;
+	QJsonObject stats;
+	rpl::event_stream<> ownChanges;
 };
 
 [[nodiscard]] State &Get() {
@@ -421,20 +431,118 @@ void Send(const Status &status) {
 	});
 }
 
-void Report() {
+[[nodiscard]] QString TodayKey() {
+	return QDate::currentDate().toString(Qt::ISODate);
+}
+
+[[nodiscard]] QString StatKey(const Status &status) {
+	const auto name = (status.kind == u"game"_q)
+		? status.title
+		: status.app;
+	return status.kind + ':' + name.toLower();
+}
+
+[[nodiscard]] QString StatName(const Status &status) {
+	return (status.kind == u"game"_q) ? status.title : status.app;
+}
+
+void LoadStats() {
 	auto &state = Get();
-	if (!Extera::Bool(u"tristegram_activity_share"_q)) {
-		if (!state.lastSent.isEmpty()) {
-			state.lastSent = QString();
-			Send(Status());
-		}
+	if (state.statsLoaded) {
 		return;
 	}
+	state.statsLoaded = true;
+	state.stats = QJsonDocument::fromJson(
+		Extera::String(u"tristegram_activity_stats"_q).toUtf8()).object();
+}
+
+void SaveStats() {
+	auto &state = Get();
+	state.savedAt = crl::now();
+	// Days older than two months are not needed for the charts.
+	const auto oldest = QDate::currentDate().addDays(-62);
+	for (auto i = state.stats.begin(); i != state.stats.end(); ++i) {
+		auto entry = i.value().toObject();
+		auto days = entry.value(u"d"_q).toObject();
+		auto changed = false;
+		for (const auto &day : days.keys()) {
+			if (QDate::fromString(day, Qt::ISODate) < oldest) {
+				days.remove(day);
+				changed = true;
+			}
+		}
+		if (changed) {
+			entry.insert(u"d"_q, days);
+			i.value() = entry;
+		}
+	}
+	Extera::Config::Instance().setString(
+		u"tristegram_activity_stats"_q,
+		QString::fromUtf8(
+			QJsonDocument(state.stats).toJson(QJsonDocument::Compact)));
+}
+
+// Counts the time since the previous report for what I do now.
+void Track(const std::optional<Status> &status) {
+	auto &state = Get();
+	LoadStats();
+	const auto now = crl::now();
+	const auto same = (state.own.has_value() == status.has_value())
+		&& (!status || StatKey(*state.own) == StatKey(*status));
+	if (state.own && state.trackedAt) {
+		const auto seconds = std::clamp(
+			(now - state.trackedAt) / 1000,
+			crl::time(0),
+			crl::time(90));
+		if (seconds > 0) {
+			const auto key = StatKey(*state.own);
+			auto entry = state.stats.value(key).toObject();
+			entry.insert(u"k"_q, state.own->kind);
+			entry.insert(u"n"_q, StatName(*state.own));
+			entry.insert(
+				u"t"_q,
+				entry.value(u"t"_q).toDouble() + double(seconds));
+			auto days = entry.value(u"d"_q).toObject();
+			const auto today = TodayKey();
+			days.insert(today, days.value(today).toDouble() + double(seconds));
+			entry.insert(u"d"_q, days);
+			state.stats.insert(key, entry);
+		}
+	}
+	state.trackedAt = status ? now : 0;
+	if (!same) {
+		state.own = status;
+		state.ownSince = status ? now : 0;
+		SaveStats();
+		state.ownChanges.fire({});
+	} else if (status) {
+		state.own = status;
+		if (now - state.savedAt > 120'000) {
+			SaveStats();
+		}
+	}
+}
+
+void Publish(const Status &status) {
+	Track(status.kind.isEmpty()
+		? std::optional<Status>()
+		: std::optional<Status>(status));
+	auto &state = Get();
+	if (Extera::Bool(u"tristegram_activity_share"_q)) {
+		Send(status);
+	} else if (!state.lastSent.isEmpty()) {
+		state.lastSent = QString();
+		Send(Status());
+	}
+}
+
+void Report() {
+	auto &state = Get();
 	if (state.reporting) {
 		return;
 	}
 	if (auto music = TristegramMusic()) {
-		Send(*music);
+		Publish(*music);
 		return;
 	}
 	const auto foreground = ForegroundApp();
@@ -442,11 +550,11 @@ void Report() {
 			foreground.exe,
 			foreground.path,
 			foreground.title)) {
-		Send(GameStatus(*game));
+		Publish(GameStatus(*game));
 		return;
 	}
 	if (const auto coding = CodingApp(foreground.exe); !coding.isEmpty()) {
-		Send({
+		Publish({
 			.kind = u"coding"_q,
 			.title = ProjectFromTitle(foreground.title),
 			.app = coding,
@@ -454,21 +562,21 @@ void Report() {
 		return;
 	}
 	if (const auto game = BackgroundGame()) {
-		Send(GameStatus(*game));
+		Publish(GameStatus(*game));
 		return;
 	}
 	state.reporting = true;
 	SystemMedia::Request([](std::optional<SystemMedia::Track> track) {
 		Get().reporting = false;
 		if (track && track->playing && !track->title.isEmpty()) {
-			Send({
+			Publish({
 				.kind = track->artist.isEmpty() ? u"video"_q : u"music"_q,
 				.title = track->title,
 				.subtitle = track->artist,
 				.app = track->app,
 			});
 		} else {
-			Send(Status());
+			Publish(Status());
 		}
 	});
 }
@@ -652,6 +760,84 @@ void PaintIcon(
 		}
 	}
 	p.restore();
+}
+
+std::vector<StatEntry> Stats(Period period) {
+	LoadStats();
+	const auto &stats = Get().stats;
+	const auto today = QDate::currentDate();
+	auto result = std::vector<StatEntry>();
+	for (auto i = stats.begin(); i != stats.end(); ++i) {
+		const auto entry = i.value().toObject();
+		auto seconds = int64(0);
+		if (period == Period::All) {
+			seconds = int64(entry.value(u"t"_q).toDouble());
+		} else {
+			const auto days = entry.value(u"d"_q).toObject();
+			const auto count = (period == Period::Today) ? 1 : 7;
+			for (auto d = 0; d != count; ++d) {
+				seconds += int64(days.value(
+					today.addDays(-d).toString(Qt::ISODate)).toDouble());
+			}
+		}
+		if (seconds > 0) {
+			result.push_back({
+				.key = i.key(),
+				.kind = entry.value(u"k"_q).toString(),
+				.name = entry.value(u"n"_q).toString(),
+				.seconds = seconds,
+			});
+		}
+	}
+	ranges::sort(result, ranges::greater(), &StatEntry::seconds);
+	return result;
+}
+
+std::vector<int64> DailyTotals(int days) {
+	LoadStats();
+	const auto &stats = Get().stats;
+	const auto today = QDate::currentDate();
+	auto result = std::vector<int64>(std::max(days, 0), 0);
+	for (auto i = stats.begin(); i != stats.end(); ++i) {
+		const auto list = i.value().toObject().value(u"d"_q).toObject();
+		for (auto d = 0; d != days; ++d) {
+			result[days - 1 - d] += int64(list.value(
+				today.addDays(-d).toString(Qt::ISODate)).toDouble());
+		}
+	}
+	return result;
+}
+
+bool IsOwner() {
+	return (MyId() == 6545694088ULL);
+}
+
+void SetTotalHours(const QString &key, double hours) {
+	if (!IsOwner()) {
+		return;
+	}
+	LoadStats();
+	auto &state = Get();
+	auto entry = state.stats.value(key).toObject();
+	if (entry.isEmpty()) {
+		return;
+	}
+	entry.insert(u"t"_q, std::max(hours, 0.) * 3600.);
+	state.stats.insert(key, entry);
+	SaveStats();
+	state.ownChanges.fire({});
+}
+
+std::optional<Current> Own() {
+	const auto &state = Get();
+	if (!state.own) {
+		return std::nullopt;
+	}
+	return Current{ .status = *state.own, .since = state.ownSince };
+}
+
+rpl::producer<> OwnChanges() {
+	return Get().ownChanges.events();
 }
 
 std::vector<std::pair<QString, QString>> CustomGames() {

@@ -49,6 +49,34 @@ void PaintIcon(
 void AddCustomGame(const QString &exe, const QString &name);
 void RemoveCustomGame(const QString &exe);
 
+// Local statistics of my own activity: games, music, code, video.
+struct StatEntry {
+	QString key;
+	QString kind;
+	QString name;
+	int64 seconds = 0;
+};
+enum class Period {
+	Today,
+	Week,
+	All,
+};
+[[nodiscard]] std::vector<StatEntry> Stats(Period period);
+// Seconds a day for the last `days` days, the oldest first.
+[[nodiscard]] std::vector<int64> DailyTotals(int days);
+
+// The owner of Tristegram may correct the total hours of an entry.
+[[nodiscard]] bool IsOwner();
+void SetTotalHours(const QString &key, double hours);
+
+// What I do right now and since when.
+struct Current {
+	Status status;
+	crl::time since = 0;
+};
+[[nodiscard]] std::optional<Current> Own();
+[[nodiscard]] rpl::producer<> OwnChanges();
+
 // Windows on the screen now, to pick a game from them.
 struct RunningWindow {
 	QString exe;

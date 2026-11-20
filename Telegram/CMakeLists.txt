@@ -2016,6 +2016,8 @@ PRIVATE
     extera/tristegram_hotkeys.h
     extera/tristegram_activity.cpp
     extera/tristegram_activity.h
+    extera/tristegram_activity_ui.cpp
+    extera/tristegram_activity_ui.h
     extera/tristegram_crash.cpp
     extera/tristegram_crash.h
     extera/tristegram_volume.cpp
