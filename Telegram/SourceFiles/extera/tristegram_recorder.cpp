@@ -13,6 +13,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "lang/lang_keys.h"
 #include "ui/abstract_button.h"
 #include "ui/painter.h"
+#include "ui/widgets/popup_menu.h"
 #include "ui/rp_widget.h"
 #include "ui/toast/toast.h"
 #include "window/window_controller.h"
@@ -605,11 +606,18 @@ private:
 			p.scale(
 				size.width() / double(full.width()),
 				size.height() / double(full.height()));
-			window->render(
-				&p,
-				QPoint(),
-				QRegion(),
-				QWidget::DrawChildren);
+			// From the screen: drawing the widgets again 24 times a
+			// second could crash on some of them.
+			auto grabbed = QRect();
+			const auto global = QRect(
+				window->mapToGlobal(QPoint()),
+				window->size());
+			const auto shot = Ui::PopupMenu::GrabScreen(global, &grabbed);
+			if (!shot.isNull()) {
+				p.drawImage(
+					QRectF(grabbed.topLeft() - global.topLeft(), grabbed.size()),
+					shot);
+			}
 			// The cursor, so it is clear what happens on the video.
 			const auto cursor = window->mapFromGlobal(QCursor::pos());
 			if (window->rect().contains(cursor)) {
