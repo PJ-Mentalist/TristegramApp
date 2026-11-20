@@ -202,7 +202,17 @@ void ContentWidget::paintGlass(QRect clip) {
 	}
 	auto gaps = std::vector<QRect>();
 	auto dividers = std::vector<Ui::BoxContentDivider*>();
-	{
+	// Tristegram: walking all the children on every paint is slow while
+	// scrolling, look for new ones twice a second only.
+	const auto now = crl::now();
+	if (now - _glassScannedAt < 500) {
+		for (const auto &divider : _glassDividers) {
+			if (divider) {
+				dividers.push_back(divider.data());
+			}
+		}
+	} else {
+		_glassScannedAt = now;
 		auto stack = std::vector<QObject*>{ inner };
 		while (!stack.empty()) {
 			const auto object = stack.back();
@@ -221,6 +231,10 @@ void ContentWidget::paintGlass(QRect clip) {
 				}
 				stack.push_back(child);
 			}
+		}
+		_glassDividers.clear();
+		for (const auto divider : dividers) {
+			_glassDividers.push_back(divider);
 		}
 	}
 	for (const auto divider : dividers) {

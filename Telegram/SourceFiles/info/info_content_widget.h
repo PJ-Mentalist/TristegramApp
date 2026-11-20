@@ -36,6 +36,7 @@ struct SwipeHandlerArgs;
 class RoundRect;
 class ScrollArea;
 class InputField;
+class BoxContentDivider;
 struct ScrollToRequest;
 template <typename Widget>
 class PaddingWrap;
@@ -210,6 +211,8 @@ protected:
 	void resizeEvent(QResizeEvent *e) override;
 	void paintEvent(QPaintEvent *e) override;
 	void paintGlass(QRect clip);
+	std::vector<QPointer<Ui::BoxContentDivider>> _glassDividers;
+	crl::time _glassScannedAt = 0;
 
 	void setScrollTopSkip(int scrollTopSkip);
 	void setScrollBottomSkip(int scrollBottomSkip);
