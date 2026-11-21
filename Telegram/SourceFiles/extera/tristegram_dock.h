@@ -17,4 +17,7 @@ void InstallDock(
 	not_null<QWidget*> parent,
 	not_null<Window::SessionController*> controller);
 
+// Choose and order what is in the dock: chats, folders and buttons.
+void ShowDockEditor(not_null<Window::SessionController*> controller);
+
 } // namespace Tristegram

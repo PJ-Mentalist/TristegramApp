@@ -19,6 +19,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "extera/tristegram_folders.h"
 #include "extera/tristegram_fonts.h"
 #include "extera/tristegram_live_wallpaper.h"
+#include "extera/tristegram_dock.h"
 #include "extera/tristegram_logo.h"
 #include "extera/tristegram_icons.h"
 #include "ui/boxes/single_choice_box.h"
@@ -1554,7 +1555,9 @@ void FillBackground(
 	}
 }
 
-void FillAnimations(not_null<Ui::VerticalLayout*> content) {
+void FillAnimations(
+		not_null<Ui::VerticalLayout*> content,
+		not_null<Window::SessionController*> controller) {
 	content->add(CreateLivePreview(content), QMargins());
 	AddLabel(content, tr::lng_tgs_animations(tr::now));
 	{
@@ -1611,6 +1614,100 @@ void FillAnimations(not_null<Ui::VerticalLayout*> content) {
 	{
 		const auto group = AddGroup(content);
 		AddConfigToggle(group, tr::lng_tgs_dock(tr::now), u"tristegram_dock"_q);
+		AddActionRow(
+			group,
+			tr::lng_tgk_dock_items(tr::now),
+			nullptr,
+			[=] { Tristegram::ShowDockEditor(controller); });
+	}
+	AddLabel(content, tr::lng_tgk_dock_side(tr::now));
+	AddSegments(
+		content,
+		{
+			tr::lng_tgk_dock_bottom(tr::now),
+			tr::lng_tgk_dock_left(tr::now),
+			tr::lng_tgk_dock_right(tr::now),
+		},
+		std::clamp(Extera::Int(u"tristegram_dock_side"_q), 0, 2),
+		[](int index) {
+			Config().setInt(u"tristegram_dock_side"_q, index);
+		});
+	AddLabel(content, tr::lng_tgk_dock_mode(tr::now));
+	AddSegments(
+		content,
+		{
+			tr::lng_tgk_dock_hover(tr::now),
+			tr::lng_tgk_dock_always(tr::now),
+		},
+		std::clamp(Extera::Int(u"tristegram_dock_mode"_q), 0, 1),
+		[](int index) {
+			Config().setInt(u"tristegram_dock_mode"_q, index);
+		});
+	{
+		const auto sizes = std::vector<int>{ 36, 44, 56, 68 };
+		const auto current = Extera::Int(u"tristegram_dock_size"_q);
+		const auto index = int(std::distance(
+			sizes.begin(),
+			ranges::min_element(sizes, ranges::less(), [&](int size) {
+				return std::abs(size - current);
+			})));
+		AddLabel(content, tr::lng_tgk_dock_size(tr::now));
+		AddSegments(
+			content,
+			{
+				tr::lng_tgk_dock_small(tr::now),
+				tr::lng_tgk_dock_medium(tr::now),
+				tr::lng_tgk_dock_large(tr::now),
+				tr::lng_tgk_dock_huge(tr::now),
+			},
+			index,
+			[=](int index) {
+				Config().setInt(u"tristegram_dock_size"_q, sizes[index]);
+			});
+	}
+	{
+		const auto values = std::vector<int>{ 0, 25, 45, 70 };
+		const auto current = Extera::Int(u"tristegram_dock_magnify"_q);
+		const auto index = int(std::distance(
+			values.begin(),
+			ranges::min_element(values, ranges::less(), [&](int value) {
+				return std::abs(value - current);
+			})));
+		AddLabel(content, tr::lng_tgk_dock_magnify(tr::now));
+		AddSegments(
+			content,
+			{
+				tr::lng_tgs_effect_none(tr::now),
+				tr::lng_tgk_dock_light(tr::now),
+				tr::lng_tgk_dock_medium(tr::now),
+				tr::lng_tgk_dock_strong(tr::now),
+			},
+			index,
+			[=](int index) {
+				Config().setInt(u"tristegram_dock_magnify"_q, values[index]);
+			});
+	}
+	{
+		const auto values = std::vector<int>{ 55, 75, 88, 100 };
+		const auto current = Extera::Int(u"tristegram_dock_opacity"_q);
+		const auto index = int(std::distance(
+			values.begin(),
+			ranges::min_element(values, ranges::less(), [&](int value) {
+				return std::abs(value - current);
+			})));
+		AddLabel(content, tr::lng_tgk_dock_opacity(tr::now));
+		AddSegments(
+			content,
+			{
+				tr::lng_tgk_dock_glass(tr::now),
+				tr::lng_tgk_dock_light(tr::now),
+				tr::lng_tgk_dock_medium(tr::now),
+				tr::lng_tgk_dock_solid(tr::now),
+			},
+			index,
+			[=](int index) {
+				Config().setInt(u"tristegram_dock_opacity"_q, values[index]);
+			});
 	}
 	AddNote(content, tr::lng_tgs_motion_note(tr::now));
 
@@ -2694,7 +2791,7 @@ void SettingsWindow::refillPane() {
 	case Section::Fonts: FillFonts(inner, _controller); break;
 	case Section::Themes: FillThemes(inner, _controller); break;
 	case Section::Background: FillBackground(inner, _controller); break;
-	case Section::Animations: FillAnimations(inner); break;
+	case Section::Animations: FillAnimations(inner, _controller); break;
 	case Section::Avatars: FillAvatars(inner); break;
 	case Section::Icons: FillIcons(inner, _controller); break;
 	case Section::Chats: FillChats(inner, _controller); break;
