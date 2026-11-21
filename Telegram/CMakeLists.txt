@@ -2048,6 +2048,8 @@ PRIVATE
     extera/tristegram_custom_ui.cpp
     extera/tristegram_custom_ui.h
     extera/tristegram_settings_window.cpp
+    extera/tristegram_dnd.cpp
+    extera/tristegram_dnd.h
     extera/tristegram_downloads.cpp
     extera/tristegram_downloads.h
     extera/tristegram_music.cpp

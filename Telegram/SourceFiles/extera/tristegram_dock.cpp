@@ -15,6 +15,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "dialogs/dialogs_pinned_list.h"
 #include "extera/extera_config.h"
 #include "extera/tristegram_activity_ui.h"
+#include "extera/tristegram_dnd.h"
 #include "extera/tristegram_downloads.h"
 #include "extera/tristegram_logo.h"
 #include "extera/tristegram_music.h"
@@ -159,6 +160,7 @@ void SaveIds(const std::vector<QString> &ids) {
 		u"music"_q,
 		u"activity"_q,
 		u"downloads"_q,
+		u"dnd"_q,
 		u"settings"_q,
 	};
 }
@@ -174,6 +176,8 @@ void SaveIds(const std::vector<QString> &ids) {
 		return tr::lng_tgk_dock_downloads(tr::now);
 	} else if (id == u"settings"_q) {
 		return tr::lng_menu_settings(tr::now);
+	} else if (id == u"dnd"_q) {
+		return tr::lng_tgdnd_dock(tr::now);
 	}
 	return QString();
 }
@@ -187,6 +191,8 @@ void SaveIds(const std::vector<QString> &ids) {
 		return &st::menuIconDownload;
 	} else if (id == u"settings"_q) {
 		return &st::menuIconSettings;
+	} else if (id == u"dnd"_q) {
+		return &st::menuIconMute;
 	}
 	return nullptr;
 }
@@ -264,8 +270,9 @@ void PaintItem(
 		return;
 	}
 	auto fill = QLinearGradient(r.topLeft(), r.bottomRight());
-	fill.setColorAt(0., colors.from);
-	fill.setColorAt(1., colors.to);
+	const auto dndOff = (item.button == u"dnd"_q) && !DndActive();
+	fill.setColorAt(0., dndOff ? QColor(0x70, 0x74, 0x7C) : colors.from);
+	fill.setColorAt(1., dndOff ? QColor(0x4A, 0x4D, 0x55) : colors.to);
 	p.setPen(Qt::NoPen);
 	p.setBrush(fill);
 	p.drawRoundedRect(r, r.width() * 0.28, r.width() * 0.28);
@@ -314,6 +321,8 @@ void Activate(
 		ShowDownloadsWindow(controller);
 	} else if (item.button == u"settings"_q) {
 		controller->showSettings();
+	} else if (item.button == u"dnd"_q) {
+		ShowDndBox(controller);
 	}
 }
 
@@ -391,6 +400,9 @@ Dock::Dock(
 		}
 		return base::EventFilterResult::Continue;
 	});
+	DndChanges() | rpl::on_next([=] {
+		update();
+	}, lifetime());
 	Extera::Config::Instance().changes(
 	) | rpl::filter([](const QString &key) {
 		return key.startsWith(u"tristegram_dock"_q);

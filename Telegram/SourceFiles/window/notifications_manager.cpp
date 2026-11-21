@@ -5,6 +5,7 @@ the official desktop application for the Telegram messaging service.
 For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
+#include "extera/tristegram_dnd.h"
 #include "window/notifications_manager.h"
 
 #include "extera/extera_config.h"
@@ -452,6 +453,11 @@ void System::schedule(Data::ItemNotification notification) {
 	const auto item = notification.item;
 	const auto type = notification.type;
 	const auto thread = item->notificationThread();
+	if (Tristegram::DndBlocks(item->history()->peer)) {
+		// Tristegram: "Do not disturb, except..." is on.
+		thread->popNotification(notification);
+		return;
+	}
 	const auto skip = skipNotification(notification);
 	if (skip.value == SkipState::Skip) {
 		thread->popNotification(notification);

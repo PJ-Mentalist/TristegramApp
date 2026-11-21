@@ -12,6 +12,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "extera/extera_config.h"
 #include "extera/tristegram_dock.h"
 #include "extera/tristegram_notes.h"
+#include "extera/tristegram_dnd.h"
 
 #include "base/call_delayed.h"
 #include "menu/menu_check_item.h"
@@ -1930,6 +1931,16 @@ void Filler::fillContextMenuActions() {
 	addToggleUnreadMark();
 	addToggleTopicClosed();
 	addToggleFolder();
+	if (_peer && Tristegram::DndActive()) {
+		const auto peer = _peer;
+		const auto allowed = Tristegram::DndAllowed(peer);
+		_addAction(
+			(allowed
+				? tr::lng_tgdnd_dont_let_through(tr::now)
+				: tr::lng_tgdnd_let_through(tr::now)),
+			[=] { Tristegram::DndToggleAllowed(peer); },
+			allowed ? &st::menuIconMute : &st::menuIconUnmute);
+	}
 	if (_peer) {
 		const auto peer = _peer;
 		const auto controller = _controller;
