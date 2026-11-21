@@ -1546,15 +1546,15 @@ void TopBarWidget::updateControlsGeometry() {
 		}
 		const auto skip = style::ConvertScale(10);
 		const auto pillHeight = std::min(
-			style::ConvertScale(42),
-			height() - style::ConvertScale(8));
+			style::ConvertScale(50),
+			height() - style::ConvertScale(4));
 		auto fits = false;
 		if (centered) {
 			const auto from = (_back->isHidden()
 				? 0
 				: (_back->x() + _back->width())) + skip;
 			const auto pillWidth = std::min(
-				style::ConvertScale(310),
+				style::ConvertScale(380),
 				_info->x() - skip - from);
 			fits = (pillWidth >= style::ConvertScale(200));
 			if (fits) {
@@ -1567,7 +1567,7 @@ void TopBarWidget::updateControlsGeometry() {
 		} else {
 			const auto right = width() - _rightTaken - skip;
 			const auto pillWidth = std::min(
-				style::ConvertScale(310),
+				style::ConvertScale(380),
 				right - _leftTaken - style::ConvertScale(160));
 			fits = (pillWidth >= style::ConvertScale(200));
 			if (fits) {

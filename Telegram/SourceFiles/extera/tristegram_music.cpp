@@ -820,7 +820,8 @@ void PaintVinyl(
 		QRectF rect,
 		const QImage &cover,
 		double angle,
-		uint64 seed) {
+		uint64 seed,
+		double labelShare = 0.38) {
 	auto hq = PainterHighQualityEnabler(p);
 	const auto center = rect.center();
 	const auto radius = rect.width() / 2.;
@@ -837,7 +838,8 @@ void PaintVinyl(
 	p.setBrush(Qt::NoBrush);
 	const auto grooves = std::max(6, int(radius / Px(4)));
 	for (auto i = 0; i != grooves; ++i) {
-		const auto r = radius * (0.42 + 0.55 * i / double(grooves));
+		const auto from = labelShare + 0.04;
+		const auto r = radius * (from + (0.97 - from) * i / double(grooves));
 		p.setPen(QPen(
 			QColor(255, 255, 255, (i % 3 == 0) ? 20 : 10),
 			std::max(1., radius / 120.)));
@@ -845,7 +847,7 @@ void PaintVinyl(
 	}
 
 	// The label turns with the record.
-	const auto label = radius * 0.38;
+	const auto label = radius * labelShare;
 	p.save();
 	p.translate(center);
 	p.rotate(angle);
@@ -3205,6 +3207,7 @@ public:
 	NowPlayingPill(
 		QWidget *parent,
 		not_null<Window::SessionController*> controller);
+	~NowPlayingPill();
 
 protected:
 	void paintEvent(QPaintEvent *e) override;
@@ -3225,6 +3228,7 @@ private:
 	};
 	void updateTrack();
 	void showVolume();
+	void showCover(bool shown);
 	[[nodiscard]] QRectF discRect() const;
 	[[nodiscard]] QRectF partRect(Part part) const;
 	[[nodiscard]] Part partAt(QPoint position) const;
@@ -3240,6 +3244,8 @@ private:
 	Media::Player::TrackState _state;
 	crl::time _volumeShownUntil = 0;
 	QPointer<VolumePopup> _volume;
+	QPointer<QWidget> _coverPopup;
+	base::Timer _coverTimer;
 
 };
 
@@ -3253,7 +3259,11 @@ NowPlayingPill::NowPlayingPill(
 	if (isVisible()) {
 		update(discRect().toAlignedRect().marginsAdded({ 2, 2, 2, 2 }));
 	}
-}) {
+	if (_coverPopup) {
+		_coverPopup->update();
+	}
+})
+, _coverTimer([=] { showCover(true); }) {
 	setMouseTracking(true);
 	Library::Instance().ensureTracking();
 	const auto instance = Media::Player::instance();
@@ -3309,16 +3319,14 @@ void NowPlayingPill::showVolume() {
 }
 
 QRectF NowPlayingPill::discRect() const {
-	return QRectF(
-		Px(5),
-		(height() - Px(30)) / 2.,
-		Px(30),
-		Px(30));
+	// The record takes the whole height of the capsule.
+	const auto size = double(height() - Px(2));
+	return QRectF(Px(1), (height() - size) / 2., size, size);
 }
 
 QRectF NowPlayingPill::partRect(Part part) const {
-	const auto small = Px(24);
-	const auto play = Px(28);
+	const auto small = Px(28);
+	const auto play = std::min(Px(36), height() - Px(8));
 	const auto y = (height() - small) / 2.;
 	const auto volume = QRectF(width() - Px(6) - small, y, small, small);
 	const auto next = volume.translated(-small - Px(1), 0);
@@ -3356,6 +3364,14 @@ NowPlayingPill::Part NowPlayingPill::partAt(QPoint position) const {
 }
 
 void NowPlayingPill::mouseMoveEvent(QMouseEvent *e) {
+	const auto overDisc = _track
+		&& discRect().contains(QPointF(e->pos()));
+	if (overDisc && !_coverPopup && !_coverTimer.isActive()) {
+		_coverTimer.callOnce(250);
+	} else if (!overDisc) {
+		_coverTimer.cancel();
+		showCover(false);
+	}
 	const auto over = partAt(e->pos());
 	if (_over != over) {
 		_over = over;
@@ -3366,7 +3382,162 @@ void NowPlayingPill::mouseMoveEvent(QMouseEvent *e) {
 
 void NowPlayingPill::leaveEventHook(QEvent *e) {
 	_over = Part::None;
+	_coverTimer.cancel();
+	showCover(false);
 	update();
+}
+
+// A big cover with the record sliding out of it, while the mouse is
+// over the small record.
+class CoverPopup final : public Ui::RpWidget {
+public:
+	CoverPopup(
+		Fn<const QImage&()> cover,
+		Fn<std::optional<Track>()> track)
+	: RpWidget(nullptr)
+	, _cover(std::move(cover))
+	, _track(std::move(track)) {
+		setWindowFlags(Qt::ToolTip
+			| Qt::FramelessWindowHint
+			| Qt::NoDropShadowWindowHint);
+		setAttribute(Qt::WA_TranslucentBackground);
+		setAttribute(Qt::WA_NoSystemBackground);
+		setAttribute(Qt::WA_TransparentForMouseEvents);
+		setAttribute(Qt::WA_ShowWithoutActivating);
+		setAttribute(Qt::WA_DeleteOnClose);
+		resize(Px(400), Px(300));
+		_appear.start([=] { update(); }, 0., 1., 280, anim::easeOutCirc);
+	}
+
+protected:
+	void paintEvent(QPaintEvent *e) override {
+		auto p = QPainter(this);
+		auto hq = PainterHighQualityEnabler(p);
+		const auto colors = CurrentLogoStyle();
+		const auto shown = _appear.value(1.);
+		p.setOpacity(shown);
+		const auto card = QRectF(rect()).marginsRemoved(
+			{ 6., 6., 6., 6. });
+		const auto image = _cover();
+		const auto track = _track();
+
+		// Blurred cover colors as the card background.
+		p.setPen(QPen(Alpha(st::windowFg->c, 0.12), 1.));
+		auto back = QLinearGradient(card.topLeft(), card.bottomRight());
+		back.setColorAt(0., st::windowBg->c);
+		back.setColorAt(1., st::windowBgOver->c);
+		p.setBrush(back);
+		p.drawRoundedRect(card, Px(22), Px(22));
+		auto wash = QLinearGradient(card.topLeft(), card.bottomRight());
+		wash.setColorAt(0., Alpha(colors.from, 0.22));
+		wash.setColorAt(1., Alpha(colors.to, 0.10));
+		p.setPen(Qt::NoPen);
+		p.setBrush(wash);
+		p.drawRoundedRect(card, Px(22), Px(22));
+
+		const auto side = card.height() - Px(64);
+		const auto coverRect = QRectF(
+			card.x() + Px(18),
+			card.y() + Px(18),
+			side,
+			side);
+		// The record slides out from behind the cover.
+		const auto slide = side * 0.42 * shown;
+		const auto disc = coverRect.translated(slide, 0).marginsRemoved(
+			QMarginsF(Px(6), Px(6), Px(6), Px(6)));
+		PaintVinyl(
+			p,
+			disc,
+			image,
+			SpinAngle(crl::now(), _lastSpin, _angle),
+			track ? track->document : 0,
+			0.5);
+
+		p.save();
+		auto clip = QPainterPath();
+		clip.addRoundedRect(coverRect, Px(14), Px(14));
+		p.setClipPath(clip);
+		if (!image.isNull()) {
+			const auto s = std::min(image.width(), image.height());
+			p.drawImage(
+				coverRect,
+				image,
+				QRect(
+					(image.width() - s) / 2,
+					(image.height() - s) / 2,
+					s,
+					s));
+		} else {
+			auto fill = QLinearGradient(
+				coverRect.topLeft(),
+				coverRect.bottomRight());
+			fill.setColorAt(0., colors.from);
+			fill.setColorAt(1., colors.to);
+			p.fillRect(coverRect, fill);
+			PaintVinyl(
+				p,
+				coverRect.marginsRemoved(
+					QMarginsF(side / 4, side / 4, side / 4, side / 4)),
+				QImage(),
+				0.,
+				track ? track->document : 0);
+		}
+		p.restore();
+
+		if (track) {
+			const auto left = int(card.x() + Px(18));
+			const auto width = int(card.width() - Px(36));
+			const auto top = int(coverRect.bottom() + Px(8));
+			p.setPen(st::windowBoldFg);
+			p.setFont(st::semiboldFont);
+			p.drawText(
+				QRect(left, top, width, st::semiboldFont->height),
+				Qt::AlignLeft | Qt::AlignVCenter,
+				st::semiboldFont->elided(track->title, width));
+			p.setPen(st::windowSubTextFg);
+			p.setFont(st::normalFont);
+			p.drawText(
+				QRect(
+					left,
+					top + st::semiboldFont->height + Px(2),
+					width,
+					st::normalFont->height),
+				Qt::AlignLeft | Qt::AlignVCenter,
+				st::normalFont->elided(track->performer, width));
+		}
+	}
+
+private:
+	Fn<const QImage&()> _cover;
+	Fn<std::optional<Track>()> _track;
+	Ui::Animations::Simple _appear;
+	crl::time _lastSpin = 0;
+	double _angle = 0.;
+
+};
+
+void NowPlayingPill::showCover(bool shown) {
+	if (!shown) {
+		if (_coverPopup) {
+			_coverPopup->close();
+		}
+		return;
+	} else if (_coverPopup || !_track || !isVisible()) {
+		return;
+	}
+	_cover.check();
+	const auto popup = new CoverPopup(
+		[=]() -> const QImage& { return _cover.image(); },
+		[=] { return _track; });
+	_coverPopup = popup;
+	popup->move(mapToGlobal(QPoint(0, height() + Px(4))));
+	popup->show();
+}
+
+NowPlayingPill::~NowPlayingPill() {
+	if (_coverPopup) {
+		delete _coverPopup.data();
+	}
 }
 
 void NowPlayingPill::wheelEvent(QWheelEvent *e) {
@@ -3461,9 +3632,10 @@ void NowPlayingPill::paintEvent(QPaintEvent *e) {
 		disc,
 		_cover.image(),
 		SpinAngle(crl::now(), _lastSpin, _angle),
-		_track ? _track->document : 0);
+		_track ? _track->document : 0,
+		0.6);
 
-	const auto left = int(disc.right()) + Px(8);
+	const auto left = int(disc.right()) + Px(10);
 	const auto right = int(partRect(_track ? Part::Previous : Part::Volume).x())
 		- Px(4);
 	const auto available = std::max(right - left, Px(20));
