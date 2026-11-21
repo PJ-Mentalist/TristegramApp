@@ -1154,6 +1154,49 @@ void FillCustomThemes(
 void FillThemes(
 		not_null<Ui::VerticalLayout*> content,
 		not_null<Window::SessionController*> controller) {
+	AddLabel(content, tr::lng_tgdt_title(tr::now));
+	{
+		const auto group = AddGroup(content);
+		AddConfigToggle(
+			group,
+			tr::lng_tgdt_toggle(tr::now),
+			u"tristegram_daytime_theme"_q);
+		AddConfigToggle(
+			group,
+			tr::lng_tgdt_warm(tr::now),
+			u"tristegram_daytime_warm"_q);
+	}
+	AddLabel(content, tr::lng_tgdt_night(tr::now));
+	{
+		const auto hours = std::vector<int>{ 21, 22, 23 };
+		const auto current = Extera::Int(u"tristegram_daytime_night"_q);
+		const auto i = ranges::find(hours, current);
+		AddSegments(
+			content,
+			{ u"21:00"_q, u"22:00"_q, u"23:00"_q },
+			(i == hours.end()) ? 1 : int(i - hours.begin()),
+			[=](int index) {
+				Extera::Config::Instance().setInt(
+					u"tristegram_daytime_night"_q,
+					hours[index]);
+			});
+	}
+	AddLabel(content, tr::lng_tgdt_morning(tr::now));
+	{
+		const auto hours = std::vector<int>{ 6, 7, 8, 9 };
+		const auto current = Extera::Int(u"tristegram_daytime_morning"_q);
+		const auto i = ranges::find(hours, current);
+		AddSegments(
+			content,
+			{ u"6:00"_q, u"7:00"_q, u"8:00"_q, u"9:00"_q },
+			(i == hours.end()) ? 1 : int(i - hours.begin()),
+			[=](int index) {
+				Extera::Config::Instance().setInt(
+					u"tristegram_daytime_morning"_q,
+					hours[index]);
+			});
+	}
+	AddNote(content, tr::lng_tgdt_note(tr::now));
 	AddLabel(content, tr::lng_tgs_ready_themes(tr::now));
 	AddTiles(content, {
 		.count = int(ThemePresetNames().size()),

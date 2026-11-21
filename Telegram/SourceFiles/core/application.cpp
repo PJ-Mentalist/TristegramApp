@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "core/application.h"
 
+#include "extera/tristegram_daytime.h"
 #include "extera/tristegram_icons.h"
 #include "extera/tristegram_hotkeys.h"
 #include "extera/tristegram_crash.h"
@@ -672,6 +673,7 @@ void Application::run() {
 	Tristegram::InstallInputEffects();
 	Tristegram::InstallCursorEffect();
 	Tristegram::InstallCrashBreadcrumbs();
+	Tristegram::InstallDaytimeTheme();
 	Ui::InitTextOptions();
 	Ui::StartCachedCorners();
 	Ui::Emoji::Init();

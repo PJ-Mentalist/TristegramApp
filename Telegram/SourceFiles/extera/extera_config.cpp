@@ -299,6 +299,8 @@ constexpr auto kSaveDelay = crl::time(1000);
 		{ u"tristegram_appear_strength"_q, 1 },
 		{ u"tristegram_daytime_theme"_q, false },
 		{ u"tristegram_daytime_warm"_q, true },
+		{ u"tristegram_daytime_night"_q, 22 },
+		{ u"tristegram_daytime_morning"_q, 7 },
 		{ u"menu_quick_items"_q, u"reply,copy,forward"_q },
 		{ u"menu_history"_q, true },
 		{ u"menu_details"_q, true },

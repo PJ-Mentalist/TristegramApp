@@ -10153,6 +10153,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_tristegram_bgs_title" = "Chat background";
 "lng_tristegram_preview_tap" = "Tap the logo to play the animation";
 "lng_tristegram_glass_menus" = "Frosted glass menus";
+"lng_tgdt_title" = "Theme by time of day";
+"lng_tgdt_toggle" = "Light in the day, dark at night";
+"lng_tgdt_warm" = "Warm evening light";
+"lng_tgdt_night" = "Night starts at";
+"lng_tgdt_morning" = "Morning starts at";
+"lng_tgdt_note" = "The theme changes smoothly by itself. In the evening the window gets warmer, at night night mode turns on. You can still switch by hand, it changes again at the next part of the day.";
 "lng_tgs_appear_strength" = "How new messages appear";
 "lng_tgs_appear_soft" = "Soft";
 "lng_tgs_appear_spring" = "Spring";
