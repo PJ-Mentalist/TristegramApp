@@ -855,6 +855,20 @@ void FillLook(
 		// TRISTEGRAM_NEW_TOGGLES
 	}
 	AddNote(content, tr::lng_tgs_new_design_note(tr::now));
+	AddLabel(content, tr::lng_tgs_appear_strength(tr::now));
+	AddSegments(
+		content,
+		{
+			tr::lng_tgs_appear_soft(tr::now),
+			tr::lng_tgs_appear_spring(tr::now),
+			tr::lng_tgs_appear_strong(tr::now),
+		},
+		std::clamp(Extera::Int(u"tristegram_appear_strength"_q), 0, 2),
+		[](int index) {
+			Extera::Config::Instance().setInt(
+				u"tristegram_appear_strength"_q,
+				index);
+		});
 	AddLabel(content, tr::lng_tgs_header(tr::now));
 	{
 		const auto group = AddGroup(content);

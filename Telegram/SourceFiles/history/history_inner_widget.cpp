@@ -1729,22 +1729,39 @@ void HistoryInner::paintEvent(QPaintEvent *e) {
 				context.highlight = _widget->itemHighlight(item);
 				if (const auto appear = tristegramAppearProgress(item)
 					; appear < 1.) {
-					// Tristegram: fade in, sliding up or springing out.
+					// Tristegram: a spring. Incoming ones come in from the
+					// side, sent ones fly up from the message field.
 					p.save();
+					const auto strength = std::clamp(
+						Extera::Int(u"tristegram_appear_strength"_q),
+						0,
+						2);
+					const auto power = 0.6 + 0.5 * strength;
+					const auto spring = 1.
+						- std::exp(-5. * appear) * std::cos(9. * appear);
+					const auto settle = 1. - spring;
 					p.setOpacity(p.opacity()
-						* anim::easeOutCubic(1., std::min(appear * 1.6, 1.)));
+						* anim::easeOutCubic(1., std::min(appear * 2.2, 1.)));
 					if (view->hasOutLayout()) {
-						const auto scale = 0.92
-							+ 0.08 * anim::easeOutBack(1., appear);
+						const auto rise = style::ConvertScale(70) * power;
+						const auto scale = std::max(
+							0.75 + 0.25 * spring,
+							0.5);
 						const auto origin = QPointF(width(), height);
+						p.translate(0., settle * rise);
 						p.translate(origin);
 						p.scale(scale, scale);
 						p.translate(-origin);
 					} else {
+						const auto shift = style::ConvertScale(36) * power;
+						const auto scale = 0.88 + 0.12 * spring;
+						const auto origin = QPointF(0., height);
 						p.translate(
-							0.,
-							(1. - anim::easeOutCubic(1., appear))
-								* style::ConvertScale(16));
+							-settle * shift,
+							settle * style::ConvertScale(14) * power);
+						p.translate(origin);
+						p.scale(scale, scale);
+						p.translate(-origin);
 					}
 					view->draw(p, context);
 					p.restore();
@@ -2565,7 +2582,7 @@ double HistoryInner::tristegramAppearProgress(
 	if (i == _tristegramAppear.end()) {
 		return 1.;
 	}
-	constexpr auto kDuration = 340.;
+	constexpr auto kDuration = 620.;
 	return std::clamp((crl::now() - i->second) / kDuration, 0., 1.);
 }
 
