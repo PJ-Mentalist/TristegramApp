@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "extera/tristegram_icons.h"
 #include "extera/tristegram_hotkeys.h"
+#include "extera/tristegram_crash.h"
 #include "extera/tristegram_cursor.h"
 #include "extera/tristegram_activity.h"
 #include "extera/tristegram_music.h"
@@ -670,6 +671,7 @@ void Application::run() {
 	Ui::Accessible::Init();
 	Tristegram::InstallInputEffects();
 	Tristegram::InstallCursorEffect();
+	Tristegram::InstallCrashBreadcrumbs();
 	Ui::InitTextOptions();
 	Ui::StartCachedCorners();
 	Ui::Emoji::Init();

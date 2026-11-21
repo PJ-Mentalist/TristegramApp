@@ -12,6 +12,9 @@ namespace Tristegram {
 // and the call stack as module offsets, readable with Telegram.map.
 void InstallCrashLog();
 
+// Remembers what was clicked and pressed last, for the crash report.
+void InstallCrashBreadcrumbs();
+
 // The log of the previous crash if there was one since the last check,
 // moved aside so it is reported only once.
 [[nodiscard]] QString TakeLastCrashLog();

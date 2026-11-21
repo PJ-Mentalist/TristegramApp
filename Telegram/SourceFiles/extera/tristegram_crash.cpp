@@ -7,12 +7,23 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include <QtCore/QCoreApplication>
 #include <QtCore/QFile>
 #include <QtCore/QString>
+#include <QtGui/QCursor>
+#include <QtGui/QKeyEvent>
+#include <QtGui/QKeySequence>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
 #include <cstdio>
 #include <cwchar>
+#include <csignal>
+#include <cstdlib>
+#include <exception>
 #endif // Q_OS_WIN
+
+#include "base/event_filter.h"
+
+#include <QtWidgets/QApplication>
+#include <QtWidgets/QWidget>
 
 namespace Tristegram {
 namespace {
@@ -21,6 +32,10 @@ namespace {
 wchar_t LogPath[MAX_PATH * 2] = { 0 };
 LPTOP_LEVEL_EXCEPTION_FILTER Previous = nullptr;
 volatile LONG Writing = 0;
+
+// What was clicked last, written into the report.
+char LastClick[512] = { 0 };
+char LastKey[128] = { 0 };
 
 void Append(HANDLE file, const char *text) {
 	auto written = DWORD(0);
@@ -58,7 +73,7 @@ void DescribeAddress(HANDLE file, const void *address) {
 	Append(file, line);
 }
 
-LONG WINAPI Filter(EXCEPTION_POINTERS *info) {
+void WriteReport(const char *reason, EXCEPTION_POINTERS *info) {
 	if (InterlockedExchange(&Writing, 1) == 0 && LogPath[0]) {
 		const auto file = CreateFileW(
 			LogPath,
@@ -84,6 +99,21 @@ LONG WINAPI Filter(EXCEPTION_POINTERS *info) {
 				int(time.wMinute),
 				int(time.wSecond));
 			Append(file, line);
+			if (reason) {
+				Append(file, "Reason: ");
+				Append(file, reason);
+				Append(file, "\r\n");
+			}
+			if (LastClick[0]) {
+				Append(file, "Last click: ");
+				Append(file, LastClick);
+				Append(file, "\r\n");
+			}
+			if (LastKey[0]) {
+				Append(file, "Last key: ");
+				Append(file, LastKey);
+				Append(file, "\r\n");
+			}
 			if (info && info->ExceptionRecord) {
 				const auto record = info->ExceptionRecord;
 				_snprintf_s(
@@ -117,7 +147,44 @@ LONG WINAPI Filter(EXCEPTION_POINTERS *info) {
 			CloseHandle(file);
 		}
 	}
+}
+
+LONG WINAPI Filter(EXCEPTION_POINTERS *info) {
+	WriteReport(nullptr, info);
 	return Previous ? Previous(info) : EXCEPTION_CONTINUE_SEARCH;
+}
+
+// Crashes that do not go through the filter: abort, terminate, a pure
+// virtual call or a bad argument to the C runtime.
+void OnAbort(int) {
+	WriteReport("abort", nullptr);
+	TerminateProcess(GetCurrentProcess(), 3);
+}
+
+void OnTerminate() {
+	WriteReport("std::terminate (an exception nobody caught)", nullptr);
+	TerminateProcess(GetCurrentProcess(), 3);
+}
+
+void OnPureCall() {
+	WriteReport("pure virtual function call", nullptr);
+	TerminateProcess(GetCurrentProcess(), 3);
+}
+
+void OnInvalidParameter(
+		const wchar_t*,
+		const wchar_t*,
+		const wchar_t*,
+		unsigned int,
+		uintptr_t) {
+	WriteReport("invalid parameter to the C runtime", nullptr);
+	TerminateProcess(GetCurrentProcess(), 3);
+}
+
+void CopyText(char *to, size_t size, const QByteArray &text) {
+	const auto length = std::min(size_t(text.size()), size - 1);
+	memcpy(to, text.constData(), length);
+	to[length] = 0;
 }
 #endif // Q_OS_WIN
 
@@ -148,6 +215,51 @@ void InstallCrashLog() {
 		(MAX_PATH * 2) - (slash + 1 - LogPath),
 		L"tristegram_crash.txt");
 	Previous = SetUnhandledExceptionFilter(Filter);
+	signal(SIGABRT, OnAbort);
+	std::set_terminate(OnTerminate);
+	_set_purecall_handler(OnPureCall);
+	_set_invalid_parameter_handler(OnInvalidParameter);
+	// Leave room on the stack to write the report after an overflow.
+	auto guarantee = ULONG(64 * 1024);
+	SetThreadStackGuarantee(&guarantee);
+#endif // Q_OS_WIN
+}
+
+void InstallCrashBreadcrumbs() {
+#ifdef Q_OS_WIN
+	static auto installed = false;
+	if (installed || !qApp) {
+		return;
+	}
+	installed = true;
+	base::install_event_filter(qApp, [](not_null<QEvent*> e) {
+		const auto type = e->type();
+		if (type == QEvent::MouseButtonPress
+			|| type == QEvent::MouseButtonRelease) {
+			// The widget under the mouse and a few of its parents.
+			auto text = QByteArray(
+				(type == QEvent::MouseButtonPress) ? "press " : "release ");
+			auto widget = QApplication::widgetAt(QCursor::pos());
+			for (auto i = 0; widget && i != 4; ++i) {
+				if (i) {
+					text += " < ";
+				}
+				text += widget->metaObject()->className();
+				if (!widget->objectName().isEmpty()) {
+					text += " '" + widget->objectName().toUtf8() + "'";
+				}
+				widget = widget->parentWidget();
+			}
+			CopyText(LastClick, sizeof(LastClick), text);
+		} else if (type == QEvent::KeyPress) {
+			const auto key = static_cast<QKeyEvent*>(e.get());
+			CopyText(
+				LastKey,
+				sizeof(LastKey),
+				QKeySequence(key->keyCombination()).toString().toUtf8());
+		}
+		return base::EventFilterResult::Continue;
+	});
 #endif // Q_OS_WIN
 }
 
