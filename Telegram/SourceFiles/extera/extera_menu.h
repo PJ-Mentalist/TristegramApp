@@ -1,5 +1,7 @@
 #pragma once
 
+#include "data/data_types.h"
+
 class HistoryItem;
 
 namespace style {
@@ -22,6 +24,12 @@ namespace Extera {
 void AddMessageMenuActions(
 	not_null<Ui::PopupMenu*> menu,
 	not_null<HistoryItem*> item,
+	not_null<Window::SessionController*> controller);
+
+// Tristegram: actions for several chosen messages.
+void AddSelectionMenuActions(
+	not_null<Ui::PopupMenu*> menu,
+	const MessageIdsList &ids,
 	not_null<Window::SessionController*> controller);
 
 void ApplyQuickActions(not_null<Ui::PopupMenu*> menu);

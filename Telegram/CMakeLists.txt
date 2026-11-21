@@ -2020,6 +2020,10 @@ PRIVATE
     extera/tristegram_activity_ui.h
     extera/tristegram_together.cpp
     extera/tristegram_together.h
+    extera/tristegram_pip.cpp
+    extera/tristegram_pip.h
+    extera/tristegram_snapshot.cpp
+    extera/tristegram_snapshot.h
     extera/tristegram_dock.cpp
     extera/tristegram_dock.h
     extera/tristegram_cursor.cpp

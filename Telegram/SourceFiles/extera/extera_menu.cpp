@@ -36,6 +36,8 @@
 #include "history/view/controls/history_view_draft_options.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
+#include "extera/tristegram_pip.h"
+#include "extera/tristegram_snapshot.h"
 #include "ui/boxes/confirm_box.h"
 #include "ui/text/format_values.h"
 #include "ui/widgets/popup_menu.h"
@@ -551,6 +553,16 @@ void AddMessageMenuActions(
 	Plugins::AddMessageMenuItems(menu, item);
 	Tristegram::AddPlaylistMenuActions(menu, item);
 	Tristegram::AddShareImportActions(menu, item, controller);
+	if (Tristegram::CanOpenInPip(item)) {
+		menu->addAction(tr::lng_tgp_pip(tr::now), [=] {
+			if (const auto item = session->data().message(itemId)) {
+				Tristegram::OpenInPip(controller, item);
+			}
+		}, &st::menuIconVideoChat);
+	}
+	menu->addAction(tr::lng_tgsn_snapshot(tr::now), [=] {
+		Tristegram::ShowChatSnapshot(controller, { itemId });
+	}, &st::menuIconPhoto);
 	if (item->allowsForward()) {
 		// Tristegram: a reminder is the message forwarded to Saved
 		// Messages as a scheduled one, Telegram itself notifies then.
@@ -676,6 +688,22 @@ void CloseSubmenusOutside(not_null<Ui::PopupMenu*> menu) {
 		}
 	});
 	timer->start(100);
+}
+
+void AddSelectionMenuActions(
+		not_null<Ui::PopupMenu*> menu,
+		const MessageIdsList &ids,
+		not_null<Window::SessionController*> controller) {
+	if (ids.empty()) {
+		return;
+	}
+	menu->addAction(
+		tr::lng_tgsn_snapshot_count(
+			tr::now,
+			lt_amount,
+			QString::number(ids.size())),
+		[=] { Tristegram::ShowChatSnapshot(controller, ids); },
+		&st::menuIconPhoto);
 }
 
 void ApplyQuickActions(not_null<Ui::PopupMenu*> menu) {

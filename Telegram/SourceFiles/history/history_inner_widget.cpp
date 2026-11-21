@@ -3657,6 +3657,10 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 					selectedItemsForExport(),
 					this);
 			}
+			Extera::AddSelectionMenuActions(
+				_menu.get(),
+				getSelectedItems(),
+				_controller);
 			_menu->addAction(tr::lng_context_clear_selection(tr::now), [=] {
 				_widget->clearSelected();
 			}, &st::menuIconSelect);
@@ -3970,6 +3974,10 @@ void HistoryInner::showContextMenu(QContextMenuEvent *e, bool showFromTouch) {
 					selectedItemsForExport(),
 					this);
 			}
+			Extera::AddSelectionMenuActions(
+				_menu.get(),
+				getSelectedItems(),
+				_controller);
 			_menu->addAction(tr::lng_context_clear_selection(tr::now), [=] {
 				_widget->clearSelected();
 			}, &st::menuIconSelect);

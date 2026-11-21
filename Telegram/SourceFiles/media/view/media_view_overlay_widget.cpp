@@ -64,6 +64,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "media/audio/media_audio.h"
 #include "media/view/media_view_group_thumbs.h"
 #include "media/view/media_view_pip.h"
+#include "extera/tristegram_pip.h"
 #include "media/view/media_view_overlay_raster.h"
 #include "media/view/media_view_overlay_opengl.h"
 #include "media/view/media_view_overlay_rhi.h"
@@ -4679,6 +4680,10 @@ void OverlayWidget::show(OpenRequest request) {
 			_callJoinMessageId = request.callJoinMessageId();
 			displayVideoStream(call, anim::activation::normal);
 		} else {
+			if (document && Tristegram::TakePipRequest()) {
+				// Tristegram: "Picture in picture" from the message menu.
+				_showAsPip = true;
+			}
 			displayDocument(
 				document,
 				anim::activation::normal,

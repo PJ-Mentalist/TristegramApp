@@ -1301,6 +1301,14 @@ bool AddClearSelectionAction(
 	if (!request.overSelection || request.selectedItems.empty()) {
 		return false;
 	}
+	Extera::AddSelectionMenuActions(
+		menu,
+		ranges::views::all(
+			request.selectedItems
+		) | ranges::views::transform(
+			&SelectedItem::msgId
+		) | ranges::to_vector,
+		list->controller());
 	menu->addAction(tr::lng_context_clear_selection(tr::now), [=] {
 		list->cancelSelection();
 	}, &st::menuIconSelect);
