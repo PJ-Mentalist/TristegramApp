@@ -6,6 +6,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 
 #include "apiwrap.h"
 #include "base/unixtime.h"
+#include "core/application.h"
 #include "data/data_channel.h"
 #include "data/data_chat.h"
 #include "data/data_peer.h"
@@ -447,7 +448,8 @@ void CleanerContent::archive() {
 	}
 	const auto session = &_controller->session();
 	for (const auto history : list) {
-		session->api().toggleHistoryArchived(history, true, nullptr);
+		// The callback is called when the server answers, so it can't be empty.
+		session->api().toggleHistoryArchived(history, true, [] {});
 	}
 	_controller->showToast(tr::lng_tgc_archived(tr::now)
 		+ ' '
@@ -470,18 +472,24 @@ void CleanerContent::leave() {
 			+ '?',
 		.confirmed = [=](Fn<void()> close) {
 			const auto session = &controller->session();
-			for (const auto history : list) {
-				const auto peer = history->peer;
-				if (const auto channel = peer->asChannel()) {
-					session->api().leaveChannel(channel);
-				} else {
-					session->api().deleteConversation(peer, false);
-				}
-			}
 			close();
-			if (weak) {
-				weak->refill();
+			for (const auto history : list) {
+				// Close the chat first, like Telegram does when deleting.
+				Core::App().closeChatFromWindows(history->peer);
 			}
+			crl::on_main(session, [=] {
+				for (const auto history : list) {
+					const auto peer = history->peer;
+					if (const auto channel = peer->asChannel()) {
+						session->api().leaveChannel(channel);
+					} else {
+						session->api().deleteConversation(peer, false);
+					}
+				}
+				if (weak) {
+					weak->refill();
+				}
+			});
 			controller->showToast(tr::lng_tgc_left(tr::now)
 				+ ' '
 				+ QString::number(count));
