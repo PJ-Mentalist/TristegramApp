@@ -117,6 +117,10 @@ ActivityView::ActivityView(
 	) | rpl::on_next([=] {
 		refresh();
 	}, lifetime());
+	Activity::ImagesUpdated(
+	) | rpl::on_next([=] {
+		update();
+	}, lifetime());
 }
 
 void ActivityView::setPeriod(Activity::Period period) {
@@ -204,13 +208,44 @@ void ActivityView::paintNow(QPainter &p, QRect rect, crl::time now) {
 	p.setBrush(wash);
 	p.drawRoundedRect(card, Px(18), Px(18));
 	const auto own = Activity::Own();
+	// A Steam game shows its picture behind the card.
+	const auto header = own
+		? Activity::SteamHeader(own->status.steam)
+		: QImage();
+	if (!header.isNull()) {
+		auto clip = QPainterPath();
+		clip.addRoundedRect(card, Px(18), Px(18));
+		p.save();
+		p.setClipPath(clip);
+		const auto scale = std::max(
+			card.width() / header.width(),
+			card.height() / header.height());
+		const auto size = QSizeF(header.size()) * scale;
+		p.setOpacity(0.55);
+		p.drawImage(
+			QRectF(
+				card.center() - QPointF(size.width(), size.height()) / 2.,
+				size),
+			header);
+		p.setOpacity(1.);
+		auto shade = QLinearGradient(card.topLeft(), card.topRight());
+		shade.setColorAt(0., Alpha(st::windowBg->c, 0.92));
+		shade.setColorAt(1., Alpha(st::windowBg->c, 0.35));
+		p.fillRect(card, shade);
+		p.restore();
+	}
 	const auto icon = QRectF(
 		card.x() + Px(18),
 		card.center().y() - Px(14),
 		Px(28),
 		Px(28));
 	if (own) {
-		Activity::PaintIcon(p, icon, own->status.kind, now);
+		Activity::PaintIcon(
+			p,
+			icon,
+			own->status.kind,
+			now,
+			own->status.icon);
 	}
 	const auto left = int(icon.right()) + Px(14);
 	const auto available = int(card.right()) - left - Px(16);
@@ -315,7 +350,20 @@ void ActivityView::paintEvent(QPaintEvent *e) {
 		p.setPen(Qt::NoPen);
 		p.setBrush(Alpha(colors.from, 0.15));
 		p.drawRoundedRect(icon.marginsAdded({ 3., 3., 3., 3. }), Px(9), Px(9));
-		Activity::PaintIcon(p, icon.marginsRemoved({ 3., 3., 3., 3. }), entry.kind, 0);
+		if (entry.icon.isEmpty()) {
+			Activity::PaintIcon(
+				p,
+				icon.marginsRemoved({ 3., 3., 3., 3. }),
+				entry.kind,
+				0);
+		} else {
+			Activity::PaintIcon(
+				p,
+				icon.marginsAdded({ 3., 3., 3., 3. }),
+				entry.kind,
+				0,
+				entry.icon);
+		}
 		const auto left = int(icon.right()) + Px(14);
 		const auto timeText = FormatDuration(entry.seconds);
 		const auto timeWidth = st::semiboldFont->width(timeText) + Px(8);
@@ -398,7 +446,12 @@ protected:
 		p.drawRoundedRect(r, radius, radius);
 
 		const auto icon = QRectF(Px(12), (height() - Px(20)) / 2., Px(20), Px(20));
-		Activity::PaintIcon(p, icon, own->status.kind, crl::now());
+		Activity::PaintIcon(
+			p,
+			icon,
+			own->status.kind,
+			crl::now(),
+			own->status.icon);
 		const auto timeText = FormatClock((crl::now() - own->since) / 1000);
 		const auto timeWidth = st::semiboldFont->width(timeText) + Px(14);
 		const auto left = int(icon.right()) + Px(10);

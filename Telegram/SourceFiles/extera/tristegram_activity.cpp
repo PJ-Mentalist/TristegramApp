@@ -21,6 +21,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 
 #include <QtCore/QDate>
 #include <QtCore/QDir>
+#include <QtCore/QFile>
 #include <QtCore/QFileInfo>
 #include <QtCore/QJsonArray>
 #include <QtGui/QPainterPath>
@@ -35,7 +36,11 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #ifdef Q_OS_WIN
 #include <windows.h>
 #include <tlhelp32.h>
+#include <shellapi.h>
 #endif // Q_OS_WIN
+
+#include <QtCore/QBuffer>
+#include <QtCore/QRegularExpression>
 
 namespace Tristegram::Activity {
 namespace {
@@ -67,6 +72,14 @@ struct State {
 	bool statsLoaded = false;
 	QJsonObject stats;
 	rpl::event_stream<> ownChanges;
+
+	// Pictures of games.
+	base::flat_map<QString, QString> exeIcons; // path -> base64
+	base::flat_map<QString, QString> steamIds; // path -> app id
+	base::flat_map<size_t, QImage> iconImages;
+	base::flat_map<QString, QImage> steamHeaders;
+	base::flat_set<QString> steamLoading;
+	rpl::event_stream<> imagesUpdated;
 };
 
 [[nodiscard]] State &Get() {
@@ -238,8 +251,88 @@ void SaveCustomGames(const base::flat_map<QString, QString> &games) {
 
 struct Game {
 	QString name;
+	QString path;
 	bool novel = false;
 };
+
+// The icon of the exe as a small PNG in base64, empty if none.
+[[nodiscard]] QString ExeIcon(const QString &path) {
+	if (path.isEmpty()) {
+		return QString();
+	}
+	auto &cache = Get().exeIcons;
+	if (const auto i = cache.find(path); i != end(cache)) {
+		return i->second;
+	}
+	auto result = QString();
+#ifdef Q_OS_WIN
+	const auto native = QDir::toNativeSeparators(path).toStdWString();
+	auto icon = HICON(nullptr);
+	auto id = UINT(0);
+	if (!PrivateExtractIconsW(native.c_str(), 0, 64, 64, &icon, &id, 1, 0)
+		|| !icon) {
+		icon = nullptr;
+		ExtractIconExW(native.c_str(), 0, &icon, nullptr, 1);
+	}
+	if (icon) {
+		auto image = QImage::fromHICON(icon);
+		DestroyIcon(icon);
+		if (!image.isNull()) {
+			image = image.scaled(
+				48,
+				48,
+				Qt::KeepAspectRatio,
+				Qt::SmoothTransformation);
+			auto bytes = QByteArray();
+			auto buffer = QBuffer(&bytes);
+			buffer.open(QIODevice::WriteOnly);
+			image.save(&buffer, "PNG");
+			if (bytes.size() < 11000) {
+				result = QString::fromLatin1(bytes.toBase64());
+			}
+		}
+	}
+#endif // Q_OS_WIN
+	cache.emplace(path, result);
+	return result;
+}
+
+// steamapps/common/<Game>/... is found in steamapps/appmanifest_<id>.acf.
+[[nodiscard]] QString SteamAppId(const QString &path) {
+	const auto lower = path.toLower();
+	const auto marker = u"/steamapps/common/"_q;
+	const auto at = lower.indexOf(marker);
+	if (at < 0) {
+		return QString();
+	}
+	const auto start = at + marker.size();
+	const auto end = path.indexOf('/', start);
+	const auto folder = path.mid(start, (end > start) ? (end - start) : -1);
+	auto &cache = Get().steamIds;
+	if (const auto i = cache.find(folder); i != cache.end()) {
+		return i->second;
+	}
+	auto result = QString();
+	const auto apps = QDir(path.left(at + int(qstrlen("/steamapps"))));
+	static const auto installdir = QRegularExpression(
+		u"\"installdir\"\\s+\"([^\"]+)\""_q);
+	for (const auto &file : apps.entryList(
+			{ u"appmanifest_*.acf"_q },
+			QDir::Files)) {
+		auto f = QFile(apps.filePath(file));
+		if (!f.open(QIODevice::ReadOnly) || f.size() > 64 * 1024) {
+			continue;
+		}
+		const auto match = installdir.match(QString::fromUtf8(f.readAll()));
+		if (match.hasMatch()
+			&& !match.captured(1).compare(folder, Qt::CaseInsensitive)) {
+			result = file.mid(12, file.size() - 12 - 4);
+			break;
+		}
+	}
+	cache.emplace(folder, result);
+	return result;
+}
 
 // The folder right after a store's games folder is the game name:
 // steamapps/common/<Game>, Epic Games/<Game>, GOG Games/<Game> and so on.
@@ -289,10 +382,10 @@ struct Game {
 	}
 	const auto custom = LoadCustomGames();
 	if (const auto i = custom.find(exe); i != end(custom)) {
-		return Game{ .name = i->second };
+		return Game{ .name = i->second, .path = path };
 	}
 	if (const auto known = GameApp(exe); !known.isEmpty()) {
-		return Game{ .name = known };
+		return Game{ .name = known, .path = path };
 	}
 	if (exe.contains(u"crashhandler"_q)
 		|| exe.contains(u"crashreport"_q)
@@ -304,10 +397,10 @@ struct Game {
 		const auto name = title.trimmed().isEmpty()
 			? QFileInfo(path).completeBaseName()
 			: title.trimmed();
-		return Game{ .name = name, .novel = true };
+		return Game{ .name = name, .path = path, .novel = true };
 	}
 	if (const auto store = StoreGameName(path); !store.isEmpty()) {
-		return Game{ .name = store };
+		return Game{ .name = store, .path = path };
 	}
 	return std::nullopt;
 }
@@ -327,7 +420,11 @@ struct Game {
 		do {
 			const auto exe = QString::fromWCharArray(entry.szExeFile).toLower();
 			if (custom.contains(exe) || !GameApp(exe).isEmpty()) {
-				result = DetectGame(exe, QString(), QString());
+				result = DetectGame(
+					exe,
+					QDir::fromNativeSeparators(
+						ProcessPath(entry.th32ProcessID)),
+					QString());
 				break;
 			}
 		} while (Process32NextW(snapshot, &entry));
@@ -374,6 +471,8 @@ struct Game {
 		.title = game.name,
 		.subtitle = game.novel ? u"novel"_q : QString(),
 		.app = game.name,
+		.icon = ExeIcon(game.path),
+		.steam = SteamAppId(game.path),
 	};
 }
 
@@ -390,6 +489,11 @@ struct Game {
 		return std::nullopt;
 	}
 	auto result = Status{ .kind = u"music"_q, .app = u"Tristegram"_q };
+	if (state.frequency > 0) {
+		result.position = state.position * 1000 / state.frequency;
+		result.duration = state.length * 1000 / state.frequency;
+	}
+	result.received = crl::now();
 	if (const auto song = document->song()) {
 		result.title = song->title;
 		result.subtitle = song->performer;
@@ -412,14 +516,29 @@ void Send(const Status &status) {
 	object.insert(u"title"_q, status.title);
 	object.insert(u"subtitle"_q, status.subtitle);
 	object.insert(u"app"_q, status.app);
-	const auto body = QJsonDocument(object).toJson(QJsonDocument::Compact);
+	if (!status.icon.isEmpty()) {
+		object.insert(u"icon"_q, status.icon);
+	}
+	if (!status.steam.isEmpty()) {
+		object.insert(u"steam"_q, status.steam);
+	}
 	auto &state = Get();
 	const auto now = crl::now();
-	if (state.lastSent == QString::fromUtf8(body)
-		&& now - state.lastSentAt < kKeepAlive) {
+	// The position moves all the time, compare without it.
+	const auto same = QString::fromUtf8(
+		QJsonDocument(object).toJson(QJsonDocument::Compact));
+	const auto sameTrack = (state.lastSent == same);
+	if (sameTrack && now - state.lastSentAt < kKeepAlive) {
 		return;
 	}
-	state.lastSent = QString::fromUtf8(body);
+	if (status.duration > 0) {
+		object.insert(
+			u"pos"_q,
+			double(status.position + (now - status.received)));
+		object.insert(u"dur"_q, double(status.duration));
+	}
+	const auto body = QJsonDocument(object).toJson(QJsonDocument::Compact);
+	state.lastSent = same;
 	state.lastSentAt = now;
 	auto request = QNetworkRequest(QUrl(QString::fromLatin1(kServer)));
 	request.setHeader(
@@ -499,6 +618,12 @@ void Track(const std::optional<Status> &status) {
 			auto entry = state.stats.value(key).toObject();
 			entry.insert(u"k"_q, state.own->kind);
 			entry.insert(u"n"_q, StatName(*state.own));
+			if (!state.own->icon.isEmpty()) {
+				entry.insert(u"i"_q, state.own->icon);
+			}
+			if (!state.own->steam.isEmpty()) {
+				entry.insert(u"s"_q, state.own->steam);
+			}
 			entry.insert(
 				u"t"_q,
 				entry.value(u"t"_q).toDouble() + double(seconds));
@@ -574,6 +699,9 @@ void Report() {
 				.title = track->title,
 				.subtitle = track->artist,
 				.app = track->app,
+				.position = track->position,
+				.duration = track->duration,
+				.received = crl::now(),
 			});
 		} else {
 			Publish(Status());
@@ -599,11 +727,17 @@ void RequestStatus(uint64 userId) {
 		const auto value = object.value(QString::number(userId)).toObject();
 		auto status = std::optional<Status>();
 		if (!value.isEmpty()) {
+			const auto age = crl::time(value.value(u"age"_q).toDouble());
 			status = Status{
 				.kind = value.value(u"kind"_q).toString(),
 				.title = value.value(u"title"_q).toString(),
 				.subtitle = value.value(u"subtitle"_q).toString(),
 				.app = value.value(u"app"_q).toString(),
+				.icon = value.value(u"icon"_q).toString(),
+				.steam = value.value(u"steam"_q).toString(),
+				.position = int64(value.value(u"pos"_q).toDouble()),
+				.duration = int64(value.value(u"dur"_q).toDouble()),
+				.received = crl::now() - std::clamp(age, crl::time(0), crl::time(600'000)),
 			};
 		}
 		auto &entry = Get().known[userId];
@@ -612,7 +746,8 @@ void RequestStatus(uint64 userId) {
 				&& (entry.status->kind != status->kind
 					|| entry.status->title != status->title
 					|| entry.status->subtitle != status->subtitle
-					|| entry.status->app != status->app));
+					|| entry.status->app != status->app
+					|| entry.status->icon != status->icon));
 		entry.status = status;
 		if (changed) {
 			Get().updates.fire_copy(userId);
@@ -658,6 +793,79 @@ rpl::producer<uint64> Updates() {
 	return Get().updates.events();
 }
 
+std::optional<Status> Cached(uint64 userId) {
+	const auto &known = Get().known;
+	const auto i = known.find(userId);
+	return (i != end(known)) ? i->second.status : std::nullopt;
+}
+
+int64 CurrentPosition(const Status &status) {
+	if (status.duration <= 0) {
+		return 0;
+	}
+	const auto result = status.position + (crl::now() - status.received);
+	return std::clamp(result, int64(0), status.duration);
+}
+
+QImage IconImage(const QString &icon) {
+	if (icon.isEmpty()) {
+		return QImage();
+	}
+	auto &cache = Get().iconImages;
+	const auto key = size_t(qHash(icon));
+	if (const auto i = cache.find(key); i != end(cache)) {
+		return i->second;
+	}
+	if (cache.size() > 64) {
+		cache.clear();
+	}
+	auto image = QImage::fromData(QByteArray::fromBase64(icon.toLatin1()));
+	if (!image.isNull()) {
+		image = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+	}
+	cache.emplace(key, image);
+	return image;
+}
+
+QImage SteamHeader(const QString &appId) {
+	static const auto digits = QRegularExpression(u"^\\d{1,10}$"_q);
+	if (!digits.match(appId).hasMatch()) {
+		return QImage();
+	}
+	auto &state = Get();
+	if (const auto i = state.steamHeaders.find(appId);
+		i != end(state.steamHeaders)) {
+		return i->second;
+	}
+	if (state.steamLoading.contains(appId)) {
+		return QImage();
+	}
+	state.steamLoading.emplace(appId);
+	const auto url = QUrl(u"https://cdn.akamai.steamstatic.com/steam/apps/"_q
+		+ appId
+		+ u"/header.jpg"_q);
+	const auto reply = Manager()->get(QNetworkRequest(url));
+	QObject::connect(reply, &QNetworkReply::finished, reply, [=] {
+		reply->deleteLater();
+		auto image = QImage();
+		if (reply->error() == QNetworkReply::NoError) {
+			image = QImage::fromData(reply->readAll());
+		}
+		if (!image.isNull()) {
+			image = image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+		}
+		auto &state = Get();
+		state.steamHeaders[appId] = image;
+		state.steamLoading.remove(appId);
+		state.imagesUpdated.fire({});
+	});
+	return QImage();
+}
+
+rpl::producer<> ImagesUpdated() {
+	return Get().imagesUpdated.events();
+}
+
 QString Describe(const Status &status) {
 	const auto both = status.subtitle.isEmpty()
 		? status.title
@@ -687,8 +895,22 @@ void PaintIcon(
 		QPainter &p,
 		QRectF rect,
 		const QString &kind,
-		crl::time now) {
+		crl::time now,
+		const QString &icon) {
 	auto hq = PainterHighQualityEnabler(p);
+	if (!icon.isEmpty()) {
+		const auto image = IconImage(icon);
+		if (!image.isNull()) {
+			// The picture of the game in a rounded square.
+			auto path = QPainterPath();
+			path.addRoundedRect(rect, rect.width() * 0.22, rect.width() * 0.22);
+			p.save();
+			p.setClipPath(path);
+			p.drawImage(rect, image);
+			p.restore();
+			return;
+		}
+	}
 	const auto style = CurrentLogoStyle();
 	auto fill = QLinearGradient(rect.topLeft(), rect.bottomRight());
 	fill.setColorAt(0., style.from);
@@ -786,6 +1008,8 @@ std::vector<StatEntry> Stats(Period period) {
 				.kind = entry.value(u"k"_q).toString(),
 				.name = entry.value(u"n"_q).toString(),
 				.seconds = seconds,
+				.icon = entry.value(u"i"_q).toString(),
+				.steam = entry.value(u"s"_q).toString(),
 			});
 		}
 	}

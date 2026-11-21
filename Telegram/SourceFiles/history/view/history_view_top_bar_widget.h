@@ -274,6 +274,8 @@ private:
 	int _rightTaken = 0;
 	int _tristegramTextWidth = 0;
 	QString _tristegramActivityKind;
+	QString _tristegramActivityIcon;
+	QRect _tristegramStatusRect;
 	base::Timer _tristegramActivityTimer;
 	object_ptr<Ui::RpWidget> _tristegramMusic = { nullptr };
 	object_ptr<Ui::RpWidget> _tristegramRecord = { nullptr };

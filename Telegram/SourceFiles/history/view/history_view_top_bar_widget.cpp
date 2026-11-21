@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/view/history_view_top_bar_widget.h"
 
 #include "extera/tristegram_activity.h"
+#include "extera/tristegram_together.h"
 #include "base/timer.h"
 
 #include "extera/extera_config.h"
@@ -79,6 +80,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "styles/style_dialogs.h"
 #include "styles/style_chat.h"
 #include "styles/style_info.h"
+#include "styles/style_menu_icons.h"
+#include "styles/style_widgets.h"
 #include "extera/extera_plugins.h"
 #include "extera/extera_plugins_ui.h"
 #include "ui/widgets/popup_menu.h"
@@ -914,6 +917,11 @@ void TopBarWidget::paintStatus(
 		p.setPen(st::historyStatusFg);
 		p.drawTextLeft(left, top, outerWidth, _customTitleText);
 	} else {
+		_tristegramStatusRect = QRect(
+			left,
+			top,
+			availableWidth,
+			st::dialogsTextFont->height);
 		if (!_tristegramActivityKind.isEmpty()) {
 			// Tristegram: an animated icon of the activity.
 			const auto size = st::dialogsTextFont->height;
@@ -922,7 +930,8 @@ void TopBarWidget::paintStatus(
 				QRectF(left, top, size, size).marginsRemoved(
 					QMarginsF(1., 2., 1., 1.)),
 				_tristegramActivityKind,
-				crl::now());
+				crl::now(),
+				_tristegramActivityIcon);
 			left += size + st::dialogsTextFont->spacew;
 			availableWidth -= size + st::dialogsTextFont->spacew;
 		}
@@ -952,6 +961,33 @@ void TopBarWidget::mousePressEvent(QMouseEvent *e) {
 		&& (e->pos().y() < st::topBarHeight)
 		&& !showSelectedState()
 		&& !_chooseForReportReason;
+	if (handleClick
+		&& _tristegramActivityKind == u"music"_q
+		&& _tristegramStatusRect.marginsAdded({ 4, 6, 4, 6 }).contains(
+			e->pos())) {
+		// Tristegram: the friend's song, play it too.
+		const auto peer = _activeChat.key.peer();
+		const auto user = peer ? peer->asUser() : nullptr;
+		const auto status = user
+			? Tristegram::Activity::Cached(peerToUser(user->id).bare)
+			: std::nullopt;
+		if (status && status->kind == u"music"_q) {
+			auto menu = new Ui::PopupMenu(this, st::popupMenuWithIcons);
+			menu->setAttribute(Qt::WA_DeleteOnClose);
+			const auto controller = _controller;
+			const auto copy = *status;
+			menu->addAction(
+				tr::lng_tgt_listen(tr::now),
+				[=] { Tristegram::ListenTogether(controller, copy); },
+				&st::menuIconSoundOn);
+			menu->addAction(
+				tr::lng_tgt_profile(tr::now),
+				crl::guard(this, [=] { infoClicked(); }),
+				&st::menuIconProfile);
+			menu->popup(e->globalPosition().toPoint());
+			return;
+		}
+	}
 	if (handleClick) {
 		const auto archiveTop = (_activeChat.section == Section::ChatsList)
 			&& _activeChat.key.folder();
@@ -2169,6 +2205,7 @@ void TopBarWidget::updateOnlineDisplay() {
 	const auto now = base::unixtime::now();
 	bool titlePeerTextOnline = false;
 	auto activityKind = QString();
+	auto activityIcon = QString();
 	if (const auto user = peer->asUser()) {
 		if (session().supportMode()
 			&& !session().supportHelper().infoCurrent(user).text.empty()) {
@@ -2180,6 +2217,7 @@ void TopBarWidget::updateOnlineDisplay() {
 			text = Tristegram::Activity::Describe(*activity);
 			titlePeerTextOnline = true;
 			activityKind = activity->kind;
+			activityIcon = activity->icon;
 		} else {
 			text = Data::OnlineText(user, now);
 			titlePeerTextOnline = Data::OnlineTextActive(user, now);
@@ -2260,6 +2298,10 @@ void TopBarWidget::updateOnlineDisplay() {
 		} else {
 			text = channel->isMegagroup() ? tr::lng_group_status(tr::now) : tr::lng_channel_status(tr::now);
 		}
+	}
+	if (_tristegramActivityIcon != activityIcon) {
+		_tristegramActivityIcon = activityIcon;
+		update();
 	}
 	if (_tristegramActivityKind != activityKind) {
 		_tristegramActivityKind = activityKind;

@@ -19,6 +19,11 @@ function text(value, limit) {
   return (typeof value === 'string' ? value : '').slice(0, limit);
 }
 
+function number(value) {
+  const result = Math.round(Number(value) || 0);
+  return (result > 0 && result < 24 * 3600 * 1000) ? result : 0;
+}
+
 function body(req) {
   if (req.body && typeof req.body === 'object') {
     return req.body;
@@ -51,11 +56,19 @@ module.exports = async (req, res) => {
       store.delete(id);
       return res.json({ ok: true });
     }
+    // A small game icon (PNG in base64), a Steam app id and where the
+    // song is now, so friends can listen together.
+    const icon = text(data.icon, 16000);
+    const steam = text(data.steam, 12);
     store.set(id, {
       kind: data.kind,
       title: text(data.title, 120),
       subtitle: text(data.subtitle, 120),
       app: text(data.app, 40),
+      icon: /^[A-Za-z0-9+/=]*$/.test(icon) ? icon : '',
+      steam: /^\d*$/.test(steam) ? steam : '',
+      pos: number(data.pos),
+      dur: number(data.dur),
       ts: now,
     });
     return res.json({ ok: true });
@@ -73,6 +86,10 @@ module.exports = async (req, res) => {
         title: value.title,
         subtitle: value.subtitle,
         app: value.app,
+        icon: value.icon || '',
+        steam: value.steam || '',
+        pos: value.pos || 0,
+        dur: value.dur || 0,
         age: now - value.ts,
       };
     }

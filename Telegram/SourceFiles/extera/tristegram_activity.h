@@ -4,6 +4,8 @@ Telegram Desktop. Licensed under GNU GPL v3.
 */
 #pragma once
 
+#include <QtGui/QImage>
+
 #include <optional>
 #include <vector>
 
@@ -22,6 +24,11 @@ struct Status {
 	QString title;
 	QString subtitle;
 	QString app;
+	QString icon; // a small PNG of the game in base64
+	QString steam; // the Steam app id of the game
+	int64 position = 0; // where the song is, in ms
+	int64 duration = 0;
+	crl::time received = 0; // when the position was true
 };
 
 // Sends my own status every half a minute while sharing is on.
@@ -37,11 +44,26 @@ void Init(rpl::lifetime &lifetime);
 [[nodiscard]] QString Describe(const Status &status);
 
 // An animated icon for the kind of the activity, `now` moves it.
+// With `icon` the picture of the game is drawn instead.
 void PaintIcon(
 	QPainter &p,
 	QRectF rect,
 	const QString &kind,
-	crl::time now);
+	crl::time now,
+	const QString &icon = QString());
+
+// The picture of a game from its icon in base64, cached.
+[[nodiscard]] QImage IconImage(const QString &icon);
+
+// The wide Steam picture of a game, loads it the first time.
+[[nodiscard]] QImage SteamHeader(const QString &appId);
+[[nodiscard]] rpl::producer<> ImagesUpdated();
+
+// What is known about a user now, without asking the server.
+[[nodiscard]] std::optional<Status> Cached(uint64 userId);
+
+// Where the song of the status is now, in ms.
+[[nodiscard]] int64 CurrentPosition(const Status &status);
 
 // Games the user picked: the exe file name in lower case and the name
 // to show, for games the app does not know.
@@ -55,6 +77,8 @@ struct StatEntry {
 	QString kind;
 	QString name;
 	int64 seconds = 0;
+	QString icon;
+	QString steam;
 };
 enum class Period {
 	Today,
