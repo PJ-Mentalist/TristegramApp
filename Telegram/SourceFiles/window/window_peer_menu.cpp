@@ -11,6 +11,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "extera/extera_plugins_ui.h"
 #include "extera/extera_config.h"
 #include "extera/tristegram_dock.h"
+#include "extera/tristegram_notes.h"
 
 #include "base/call_delayed.h"
 #include "menu/menu_check_item.h"
@@ -1929,6 +1930,15 @@ void Filler::fillContextMenuActions() {
 	addToggleUnreadMark();
 	addToggleTopicClosed();
 	addToggleFolder();
+	if (_peer) {
+		const auto peer = _peer;
+		const auto controller = _controller;
+		const auto has = !Tristegram::ChatNote(peer).isEmpty();
+		_addAction(
+			(has ? tr::lng_tgn_edit(tr::now) : tr::lng_tgn_add(tr::now)),
+			[=] { Tristegram::EditChatNote(controller, peer); },
+			&st::menuIconEdit);
+	}
 	if (_peer && Extera::Bool(u"tristegram_dock"_q)) {
 		const auto peer = _peer;
 		const auto in = Tristegram::IsPeerInDock(peer);
@@ -1968,6 +1978,15 @@ void Filler::fillHistoryActions() {
 	addDirectMessages();
 	addExportChat();
 	addTranslate();
+	if (_peer) {
+		const auto peer = _peer;
+		const auto controller = _controller;
+		const auto has = !Tristegram::ChatNote(peer).isEmpty();
+		_addAction(
+			(has ? tr::lng_tgn_edit(tr::now) : tr::lng_tgn_add(tr::now)),
+			[=] { Tristegram::EditChatNote(controller, peer); },
+			&st::menuIconEdit);
+	}
 	if (_peer && _request.key.history()) {
 		const auto peer = _peer;
 		const auto controller = _controller;

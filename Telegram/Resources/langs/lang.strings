@@ -10153,6 +10153,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_tristegram_bgs_title" = "Chat background";
 "lng_tristegram_preview_tap" = "Tap the logo to play the animation";
 "lng_tristegram_glass_menus" = "Frosted glass menus";
+"lng_tgn_title" = "Note for this chat";
+"lng_tgn_placeholder" = "Only you see it: owes 500, birthday 12.03...";
+"lng_tgn_delete" = "Delete";
+"lng_tgn_add" = "Add note";
+"lng_tgn_edit" = "Edit note";
 "lng_tgk_dock_remove" = "Remove from dock";
 "lng_tgk_dock_to_dock" = "Add to dock";
 "lng_tgk_dock_move_back" = "Move back";

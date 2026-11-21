@@ -276,6 +276,7 @@ private:
 	QString _tristegramActivityKind;
 	QString _tristegramActivityIcon;
 	QRect _tristegramStatusRect;
+	QRect _tristegramNoteRect;
 	base::Timer _tristegramActivityTimer;
 	object_ptr<Ui::RpWidget> _tristegramMusic = { nullptr };
 	object_ptr<Ui::RpWidget> _tristegramRecord = { nullptr };

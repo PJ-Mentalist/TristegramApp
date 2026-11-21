@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "extera/tristegram_activity.h"
 #include "extera/tristegram_together.h"
+#include "extera/tristegram_notes.h"
 #include "base/timer.h"
 
 #include "extera/extera_config.h"
@@ -157,6 +158,11 @@ TopBarWidget::TopBarWidget(
 	Lang::Updated(
 	) | rpl::on_next([=] {
 		refreshLang();
+	}, lifetime());
+
+	Tristegram::ChatNotesChanged(
+	) | rpl::on_next([=] {
+		update();
 	}, lifetime());
 
 	_forward->setClickedCallback([=] { _forwardSelection.fire({}); });
@@ -807,10 +813,38 @@ void TopBarWidget::paintTopBar(Painter &p) {
 			.elisionLines = 1,
 		});
 
+		// Tristegram: the private note of the chat, after the name.
+		const auto note = (_activeChat.section
+			== Dialogs::EntryState::Section::History)
+			? Tristegram::ChatNote(namePeer)
+			: QString();
+		const auto noteSkip = st::normalFont->spacew * 2;
+		const auto noteWidth = Tristegram::ChatNoteChipWidth(
+			note,
+			style::ConvertScale(240));
+		_tristegramNoteRect = QRect();
+		if (noteWidth > 0) {
+			const auto nameUsed = std::min(_title.maxWidth(), namewidth);
+			const auto remaining = namewidth - nameUsed - noteSkip;
+			const auto w = std::min(noteWidth, remaining);
+			if (w >= style::ConvertScale(48)) {
+				const auto h = st::normalFont->height + style::ConvertScale(4);
+				_tristegramNoteRect = QRect(
+					nameleft + nameUsed + badgeWidth + noteSkip,
+					nametop + (st::msgNameStyle.font->height - h) / 2,
+					w,
+					h);
+				Tristegram::PaintChatNoteChip(p, _tristegramNoteRect, note);
+			}
+		}
+
 		// Tristegram: remember how wide the name block is, so the
 		// avatar, name and status can be centered as one group.
 		const auto textWidth = std::max(
-			(nameleft - _leftTaken) + _title.maxWidth() + badgeWidth,
+			(nameleft - _leftTaken)
+				+ _title.maxWidth()
+				+ badgeWidth
+				+ (noteWidth > 0 ? (noteWidth + noteSkip) : 0),
 			_titlePeerText.maxWidth());
 		if (_tristegramTextWidth != textWidth) {
 			_tristegramTextWidth = textWidth;
@@ -961,6 +995,13 @@ void TopBarWidget::mousePressEvent(QMouseEvent *e) {
 		&& (e->pos().y() < st::topBarHeight)
 		&& !showSelectedState()
 		&& !_chooseForReportReason;
+	if (handleClick && _tristegramNoteRect.contains(e->pos())) {
+		// Tristegram: edit the private note of the chat.
+		if (const auto peer = titleNamePeer()) {
+			Tristegram::EditChatNote(_controller, peer);
+			return;
+		}
+	}
 	if (handleClick
 		&& _tristegramActivityKind == u"music"_q
 		&& _tristegramStatusRect.marginsAdded({ 4, 6, 4, 6 }).contains(

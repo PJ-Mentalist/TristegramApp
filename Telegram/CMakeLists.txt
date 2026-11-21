@@ -2018,6 +2018,8 @@ PRIVATE
     extera/tristegram_activity.h
     extera/tristegram_activity_ui.cpp
     extera/tristegram_activity_ui.h
+    extera/tristegram_notes.cpp
+    extera/tristegram_notes.h
     extera/tristegram_together.cpp
     extera/tristegram_together.h
     extera/tristegram_pip.cpp
