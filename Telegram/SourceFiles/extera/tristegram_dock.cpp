@@ -27,22 +27,26 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "ui/painter.h"
 #include "ui/rp_widget.h"
 #include "ui/userpic_view.h"
+#include "ui/widgets/labels.h"
 #include "ui/widgets/popup_menu.h"
 #include "window/window_peer_menu.h"
 #include "window/window_session_controller.h"
 #include "styles/style_basic.h"
+#include "styles/style_boxes.h"
 #include "styles/style_layers.h"
 #include "styles/style_menu_icons.h"
 #include "styles/style_widgets.h"
 
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
+#include <QtGui/QContextMenuEvent>
 #include <QtGui/QCursor>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPainterPath>
 #include <QtGui/QPolygonF>
 #include <QtWidgets/QApplication>
 
+#include <array>
 #include <cmath>
 
 namespace Tristegram {
@@ -322,10 +326,14 @@ public:
 protected:
 	void paintEvent(QPaintEvent *e) override;
 	void mouseMoveEvent(QMouseEvent *e) override;
+	void mousePressEvent(QMouseEvent *e) override;
 	void mouseReleaseEvent(QMouseEvent *e) override;
+	void contextMenuEvent(QContextMenuEvent *e) override;
 	void leaveEventHook(QEvent *e) override;
 
 private:
+	void showMenu(QPoint global, int index);
+	void dragTo(QPoint position);
 	void refreshItems();
 	void relayout();
 	void checkMouse(QPoint global);
@@ -341,9 +349,14 @@ private:
 	Ui::Animations::Simple _shownAnimation;
 	Ui::Animations::Simple _hoverAnimation;
 	base::Timer _hideTimer;
+	base::unique_qptr<Ui::PopupMenu> _menu;
+	bool _menuShown = false;
 	bool _shown = false;
 	double _mouse = -1.;
 	int _over = -1;
+	int _pressed = -1;
+	QPoint _pressPosition;
+	bool _dragging = false;
 
 };
 
@@ -403,6 +416,9 @@ bool Dock::vertical() const {
 }
 
 void Dock::refreshItems() {
+	if (_dragging) {
+		return;
+	}
 	const auto session = &_controller->session();
 	auto items = std::vector<Item>();
 	for (const auto &id : CurrentIds(session)) {
@@ -458,6 +474,9 @@ void Dock::checkMouse(QPoint global) {
 		|| !_parent->isVisible()
 		|| _items.empty()
 		|| DockAlways()) {
+		return;
+	} else if (_menuShown || _dragging) {
+		_hideTimer.cancel();
 		return;
 	}
 	const auto local = _parent->mapFromGlobal(global);
@@ -556,6 +575,16 @@ void Dock::mouseMoveEvent(QMouseEvent *e) {
 		_hoverAnimation.start([=] { update(); }, 0., 1., 150);
 	}
 	_mouse = vertical() ? e->pos().y() : e->pos().x();
+	if (_pressed >= 0 && !_dragging
+		&& (e->pos() - _pressPosition).manhattanLength() > Px(8)) {
+		_dragging = true;
+		setCursor(style::cur_sizeall);
+	}
+	if (_dragging) {
+		dragTo(e->pos());
+		update();
+		return;
+	}
 	const auto over = itemAt(e->pos());
 	if (_over != over) {
 		_over = over;
@@ -570,7 +599,47 @@ void Dock::leaveEventHook(QEvent *e) {
 	update();
 }
 
+void Dock::mousePressEvent(QMouseEvent *e) {
+	if (e->button() == Qt::LeftButton) {
+		_pressed = itemAt(e->pos());
+		_pressPosition = e->pos();
+	}
+}
+
+void Dock::dragTo(QPoint position) {
+	if (_pressed < 0 || _pressed >= int(_items.size())) {
+		return;
+	}
+	const auto base = double(DockSize());
+	const auto gap = base / 4.;
+	const auto along = vertical() ? position.y() : position.x();
+	const auto slot = std::clamp(
+		int(std::floor((along - Px(14) + gap / 2.) / (base + gap))),
+		0,
+		int(_items.size()) - 1);
+	if (slot != _pressed) {
+		auto item = std::move(_items[_pressed]);
+		_items.erase(_items.begin() + _pressed);
+		_items.insert(_items.begin() + slot, std::move(item));
+		_pressed = slot;
+	}
+	_over = _pressed;
+}
+
 void Dock::mouseReleaseEvent(QMouseEvent *e) {
+	const auto wasDragging = _dragging;
+	_pressed = -1;
+	_dragging = false;
+	if (wasDragging) {
+		setCursor(style::cur_default);
+		_over = -1;
+		auto ids = std::vector<QString>();
+		for (const auto &item : _items) {
+			ids.push_back(item.id);
+		}
+		SaveIds(ids);
+		return;
+	}
 	const auto index = itemAt(e->pos());
 	if (index < 0 || e->button() != Qt::LeftButton) {
 		return;
@@ -873,7 +942,128 @@ void AddToDock(const QString &id, not_null<Main::Session*> session) {
 	SaveIds(ids);
 }
 
+void RemoveFromDock(const QString &id, not_null<Main::Session*> session) {
+	auto ids = CurrentIds(session);
+	ids.erase(ranges::remove(ids, id), ids.end());
+	SaveIds(ids);
+}
+
+void MoveInDock(
+		const QString &id,
+		int delta,
+		not_null<Main::Session*> session) {
+	auto ids = CurrentIds(session);
+	const auto i = ranges::find(ids, id);
+	if (i == ids.end()) {
+		return;
+	}
+	const auto from = int(i - ids.begin());
+	const auto to = from + delta;
+	if (to < 0 || to >= int(ids.size())) {
+		return;
+	}
+	std::swap(ids[from], ids[to]);
+	SaveIds(ids);
+}
+
+void Dock::contextMenuEvent(QContextMenuEvent *e) {
+	_pressed = -1;
+	_dragging = false;
+	showMenu(e->globalPos(), itemAt(e->pos()));
+	e->accept();
+}
+
+void Dock::showMenu(QPoint global, int index) {
+	const auto session = &_controller->session();
+	const auto controller = _controller;
+	_menu = base::make_unique_q<Ui::PopupMenu>(
+		this,
+		st::popupMenuWithIcons);
+	_menuShown = true;
+	_hideTimer.cancel();
+	_menu->setDestroyedCallback(crl::guard(this, [=] {
+		_menuShown = false;
+		if (!DockAlways() && !rect().contains(mapFromGlobal(QCursor::pos()))) {
+			_hideTimer.callOnce(500);
+		}
+	}));
+	const auto menu = _menu.get();
+	if (index >= 0 && index < int(_items.size())) {
+		const auto id = _items[index].id;
+		if (index > 0) {
+			menu->addAction(tr::lng_tgk_dock_move_back(tr::now), [=] {
+				MoveInDock(id, -1, session);
+			}, &st::menuIconCollapse);
+		}
+		if (index + 1 < int(_items.size())) {
+			menu->addAction(tr::lng_tgk_dock_move_forward(tr::now), [=] {
+				MoveInDock(id, 1, session);
+			}, &st::menuIconExpand);
+		}
+		menu->addAction(tr::lng_tgk_dock_remove(tr::now), [=] {
+			RemoveFromDock(id, session);
+		}, &st::menuIconRemove);
+		menu->addSeparator();
+	}
+	menu->addAction(tr::lng_tgk_dock_add_chat(tr::now), [=] {
+		Window::ShowChooseRecipientBox(
+			controller,
+			[=](not_null<Data::Thread*> thread) {
+				AddToDock(
+					u"p:"_q + QString::number(thread->peer()->id.value),
+					session);
+				return true;
+			},
+			tr::lng_tgk_dock_add_chat());
+	}, &st::menuIconChats);
+	menu->addAction(tr::lng_tgk_dock_customize(tr::now), [=] {
+		ShowDockEditor(controller);
+	}, &st::menuIconCustomize);
+	const auto sides = std::array{
+		std::pair{ tr::lng_tgk_dock_bottom(tr::now), 0 },
+		std::pair{ tr::lng_tgk_dock_left(tr::now), 1 },
+		std::pair{ tr::lng_tgk_dock_right(tr::now), 2 },
+	};
+	const auto current = Extera::Int(u"tristegram_dock_side"_q);
+	for (const auto &[text, value] : sides) {
+		const auto side = value;
+		menu->addAction(
+			tr::lng_tgk_dock_side(tr::now) + u": "_q + text,
+			[=] {
+				Extera::Config::Instance().setInt(
+					u"tristegram_dock_side"_q,
+					side);
+			},
+			(current == side) ? &st::menuIconSelect : nullptr);
+	}
+	menu->addAction(tr::lng_tgk_dock_always_show(tr::now), [=] {
+		Extera::Config::Instance().setInt(
+			u"tristegram_dock_mode"_q,
+			DockAlways() ? 0 : 1);
+	}, DockAlways() ? &st::menuIconSelect : nullptr);
+	menu->addSeparator();
+	menu->addAction(tr::lng_tgk_dock_turn_off(tr::now), [=] {
+		Extera::Config::Instance().setBool(u"tristegram_dock"_q, false);
+		controller->showToast(tr::lng_tgk_dock_turned_off(tr::now));
+	}, &st::menuIconBlock);
+	menu->popup(global);
+}
+
 } // namespace
+
+bool IsPeerInDock(not_null<PeerData*> peer) {
+	const auto id = u"p:"_q + QString::number(peer->id.value);
+	return ranges::contains(CurrentIds(&peer->session()), id);
+}
+
+void TogglePeerInDock(not_null<PeerData*> peer) {
+	const auto id = u"p:"_q + QString::number(peer->id.value);
+	if (IsPeerInDock(peer)) {
+		RemoveFromDock(id, &peer->session());
+	} else {
+		AddToDock(id, &peer->session());
+	}
+}
 
 void InstallDock(
 		not_null<QWidget*> parent,
@@ -889,6 +1079,16 @@ void ShowDockEditor(not_null<Window::SessionController*> controller) {
 		box->addRow(
 			object_ptr<EditorList>(box, controller),
 			QMargins(0, 0, 0, st::boxPadding.bottom()));
+		box->addRow(
+			object_ptr<Ui::FlatLabel>(
+				box,
+				tr::lng_tgk_dock_drag_hint(),
+				st::boxDividerLabel),
+			QMargins(
+				st::boxPadding.left(),
+				0,
+				st::boxPadding.right(),
+				st::boxPadding.bottom()));
 		box->addButton(tr::lng_tgk_dock_add(), [=] {
 			const auto menu = Ui::CreateChild<Ui::PopupMenu>(
 				box.get(),

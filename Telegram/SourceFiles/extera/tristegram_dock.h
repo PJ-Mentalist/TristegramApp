@@ -4,6 +4,8 @@ Telegram Desktop. Licensed under GNU GPL v3.
 */
 #pragma once
 
+class PeerData;
+
 namespace Window {
 class SessionController;
 } // namespace Window
@@ -19,5 +21,9 @@ void InstallDock(
 
 // Choose and order what is in the dock: chats, folders and buttons.
 void ShowDockEditor(not_null<Window::SessionController*> controller);
+
+// For "Add to dock" in the chat menu.
+[[nodiscard]] bool IsPeerInDock(not_null<PeerData*> peer);
+void TogglePeerInDock(not_null<PeerData*> peer);
 
 } // namespace Tristegram

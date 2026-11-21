@@ -9,6 +9,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "extera/extera_cross_send.h"
 #include "extera/extera_streamer.h"
 #include "extera/extera_plugins_ui.h"
+#include "extera/extera_config.h"
+#include "extera/tristegram_dock.h"
 
 #include "base/call_delayed.h"
 #include "menu/menu_check_item.h"
@@ -1927,6 +1929,16 @@ void Filler::fillContextMenuActions() {
 	addToggleUnreadMark();
 	addToggleTopicClosed();
 	addToggleFolder();
+	if (_peer && Extera::Bool(u"tristegram_dock"_q)) {
+		const auto peer = _peer;
+		const auto in = Tristegram::IsPeerInDock(peer);
+		_addAction(
+			(in
+				? tr::lng_tgk_dock_remove(tr::now)
+				: tr::lng_tgk_dock_to_dock(tr::now)),
+			[=] { Tristegram::TogglePeerInDock(peer); },
+			in ? &st::menuIconRemove : &st::menuIconAddToFolder);
+	}
 	if (const auto user = _peer->asUser()) {
 		if (!user->isContact()) {
 			addBlockUser();

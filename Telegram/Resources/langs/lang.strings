@@ -10153,6 +10153,15 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_tristegram_bgs_title" = "Chat background";
 "lng_tristegram_preview_tap" = "Tap the logo to play the animation";
 "lng_tristegram_glass_menus" = "Frosted glass menus";
+"lng_tgk_dock_remove" = "Remove from dock";
+"lng_tgk_dock_to_dock" = "Add to dock";
+"lng_tgk_dock_move_back" = "Move back";
+"lng_tgk_dock_move_forward" = "Move forward";
+"lng_tgk_dock_customize" = "Customize dock...";
+"lng_tgk_dock_always_show" = "Always show";
+"lng_tgk_dock_turn_off" = "Turn off dock";
+"lng_tgk_dock_turned_off" = "Dock is off. Turn it on again in Settings > Animations.";
+"lng_tgk_dock_drag_hint" = "Drag icons to reorder, right click for more.";
 "lng_tgk_dock_items" = "Chats, folders and buttons in the dock";
 "lng_tgk_dock_add" = "Add";
 "lng_tgk_dock_add_chat" = "Add a chat";
