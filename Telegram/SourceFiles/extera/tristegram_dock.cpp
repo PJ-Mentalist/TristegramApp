@@ -300,7 +300,7 @@ void Activate(
 			Window::SectionShow::Way::ClearStack);
 	} else if (item.button == u"saved"_q) {
 		controller->showPeerHistory(
-			controller->session().user(),
+			controller->session().userPeerId(),
 			Window::SectionShow::Way::ClearStack);
 	} else if (item.button == u"music"_q) {
 		ShowMusicWindow(controller);
