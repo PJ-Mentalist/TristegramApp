@@ -265,6 +265,7 @@ private:
 	void changeHeight(int newHeight);
 	void updateGeometry(int x, int y, int width, int height) override;
 	void actionsOpacityCallback();
+	void paintStyled(QPaintEvent *e);
 	void repaintText();
 	void paintTitle(Painter &p);
 	void paintText(Painter &p);
@@ -311,6 +312,8 @@ private:
 	int _replyPadding = 0;
 
 	bool _userpicLoaded = false;
+
+	base::Timer _tristegramTimer;
 
 };
 

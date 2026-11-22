@@ -44,6 +44,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "styles/style_dialogs.h"
 #include "styles/style_layers.h"
 #include "styles/style_window.h"
+#include "extera/tristegram_notify_style.h"
 
 #include <QtGui/QGuiApplication>
 #include <QtGui/QScreen>
@@ -512,6 +513,17 @@ Manager::~Manager() {
 }
 
 namespace internal {
+namespace {
+
+[[nodiscard]] bool Styled(const QWidget *widget) {
+	return widget && widget->property("tristegramStyled").toBool();
+}
+
+[[nodiscard]] int StyleOf(const QWidget *widget) {
+	return widget ? widget->property("tristegramStyle").toInt() : 0;
+}
+
+} // namespace
 
 Widget::Widget(
 	not_null<Manager*> manager,
@@ -533,7 +545,16 @@ Widget::Widget(
 		| Qt::NoDropShadowWindowHint
 		| Qt::Tool);
 	setAttribute(Qt::WA_MacAlwaysShowToolWindow);
-	setAttribute(Qt::WA_OpaquePaintEvent);
+	// Tristegram: styled windows have round corners, so see-through.
+	const auto tristegramStyle = Tristegram::NotifyStyle();
+	setProperty("tristegramStyle", tristegramStyle);
+	setProperty("tristegramStyled", tristegramStyle != 0);
+	if (tristegramStyle) {
+		setAttribute(Qt::WA_TranslucentBackground);
+		setAttribute(Qt::WA_NoSystemBackground);
+	} else {
+		setAttribute(Qt::WA_OpaquePaintEvent);
+	}
 
 	Ui::Platform::InitOnTopPanel(this);
 
@@ -652,10 +673,16 @@ QPoint Widget::computePosition(int height) const {
 }
 
 Background::Background(QWidget *parent) : RpWidget(parent) {
-	setAttribute(Qt::WA_OpaquePaintEvent);
+	if (!Styled(parent)) {
+		setAttribute(Qt::WA_OpaquePaintEvent);
+	}
 }
 
 void Background::paintEvent(QPaintEvent *e) {
+	if (Styled(parentWidget())) {
+		// The parent paints the styled background under the reply field.
+		return;
+	}
 	Painter p(this);
 
 	p.fillRect(rect(), st::notificationBg);
@@ -733,6 +760,21 @@ Notification::Notification(
 
 	prepareActionsCache();
 
+	if (Styled(this)) {
+		const auto style = StyleOf(this);
+		const auto animated = Tristegram::NotifyStyleAnimated(style);
+		const auto appear = Tristegram::NotifyAppearDuration();
+		if (animated || appear > 0) {
+			_tristegramTimer.setCallback([=] {
+				update();
+				if (!animated && crl::now() - _started > appear) {
+					_tristegramTimer.cancel();
+				}
+			});
+			_tristegramTimer.callEach(animated ? 33 : 16);
+		}
+	}
+
 	style::PaletteChanged(
 	) | rpl::on_next([=] {
 		updateNotifyDisplay();
@@ -771,8 +813,10 @@ void Notification::prepareActionsCache() {
 	actionsCacheImg.fill(Qt::transparent);
 	{
 		Painter p(&actionsCacheImg);
-		st::notifyFadeRight.fill(p, style::rtlrect(0, 0, fadeWidth, actionsCacheHeight, actionsCacheWidth));
-		p.fillRect(style::rtlrect(fadeWidth, 0, actionsCacheWidth - fadeWidth, actionsCacheHeight, actionsCacheWidth), st::notificationBg);
+		if (!Styled(this)) {
+			st::notifyFadeRight.fill(p, style::rtlrect(0, 0, fadeWidth, actionsCacheHeight, actionsCacheWidth));
+			p.fillRect(style::rtlrect(fadeWidth, 0, actionsCacheWidth - fadeWidth, actionsCacheHeight, actionsCacheWidth), st::notificationBg);
+		}
 		p.drawPixmapRight(replyRight, _reply->y() - actionsTop, actionsCacheWidth, replyCache);
 	}
 	_buttonsCache = Ui::PixmapFromImage(std::move(actionsCacheImg));
@@ -821,6 +865,11 @@ void Notification::updateGeometry(int x, int y, int width, int height) {
 void Notification::paintEvent(QPaintEvent *e) {
 	repaintText();
 
+	if (Styled(this)) {
+		paintStyled(e);
+		return;
+	}
+
 	Painter p(this);
 	p.setClipRect(e->rect());
 	p.drawImage(0, 0, _cache);
@@ -831,6 +880,57 @@ void Notification::paintEvent(QPaintEvent *e) {
 		p.drawPixmapRight(st::notifyBorderWidth, buttonsTop, width(), _buttonsCache);
 	} else if (_actionsVisible) {
 		p.drawPixmapRight(st::notifyBorderWidth, buttonsTop, width(), _buttonsCache);
+	}
+}
+
+void Notification::paintStyled(QPaintEvent *e) {
+	Painter p(this);
+	auto hq = PainterHighQualityEnabler(p);
+	p.setCompositionMode(QPainter::CompositionMode_Source);
+	p.fillRect(e->rect(), Qt::transparent);
+	p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+
+	const auto now = crl::now();
+	const auto duration = Tristegram::NotifyAppearDuration();
+	const auto appear = (duration > 0)
+		? std::clamp((now - _started) / double(duration), 0., 1.)
+		: 1.;
+	const auto full = QRectF(rect());
+	const auto screen = this->screen();
+	const auto fromRight = !screen
+		|| (geometry().center().x() >= screen->geometry().center().x());
+	Tristegram::ApplyNotifyAppear(p, full, appear, fromRight);
+	Tristegram::PaintNotifyBackground(p, full, StyleOf(this), now);
+	p.setClipPath(Tristegram::NotifyShape(full), Qt::IntersectClip);
+
+	const auto buttonsTop = st::notifyTextTop + st::semiboldFont->height;
+	const auto actions = a_actionsOpacity.animating()
+		? a_actionsOpacity.value(1.)
+		: (_actionsVisible ? 1. : 0.);
+	if (actions > 0. && !_buttonsCache.isNull() && !_cache.isNull()) {
+		// Fade the text out under the reply button.
+		auto frame = _cache;
+		frame.detach();
+		{
+			auto q = QPainter(&frame);
+			q.setCompositionMode(QPainter::CompositionMode_DestinationOut);
+			const auto cacheWidth = _buttonsCache.width()
+				/ _buttonsCache.devicePixelRatio();
+			const auto left = width() - st::notifyBorderWidth - cacheWidth;
+			const auto fade = st::notifyFadeRight.width();
+			auto gradient = QLinearGradient(left, 0, left + fade, 0);
+			gradient.setColorAt(0., QColor(0, 0, 0, 0));
+			gradient.setColorAt(1., QColor(0, 0, 0, int(255 * actions)));
+			q.fillRect(
+				QRectF(left, buttonsTop, cacheWidth, height() - buttonsTop),
+				gradient);
+		}
+		p.drawImage(0, 0, frame);
+		p.setOpacity(actions);
+		p.drawPixmapRight(st::notifyBorderWidth, buttonsTop, width(), _buttonsCache);
+		p.setOpacity(1.);
+	} else {
+		p.drawImage(0, 0, _cache);
 	}
 }
 
@@ -861,8 +961,15 @@ void Notification::repaintText() {
 	const auto adjusted = Ui::Text::AdjustCustomEmojiSize(st::emojiSize);
 	const auto skip = (adjusted - st::emojiSize + 1) / 2;
 	const auto margin = QMargins{ skip, skip, skip, skip };
-	p.fillRect(_titleRect.marginsAdded(margin), st::notificationBg);
-	p.fillRect(_textRect.marginsAdded(margin), st::notificationBg);
+	if (Styled(this)) {
+		p.setCompositionMode(QPainter::CompositionMode_Source);
+		p.fillRect(_titleRect.marginsAdded(margin), Qt::transparent);
+		p.fillRect(_textRect.marginsAdded(margin), Qt::transparent);
+		p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+	} else {
+		p.fillRect(_titleRect.marginsAdded(margin), st::notificationBg);
+		p.fillRect(_textRect.marginsAdded(margin), st::notificationBg);
+	}
 	paintTitle(p);
 	paintText(p);
 	update();
@@ -913,14 +1020,17 @@ void Notification::updateNotifyDisplay() {
 		size() * style::DevicePixelRatio(),
 		QImage::Format_ARGB32_Premultiplied);
 	img.setDevicePixelRatio(style::DevicePixelRatio());
-	img.fill(st::notificationBg->c);
+	const auto styled = Styled(this);
+	img.fill(styled ? QColor(Qt::transparent) : st::notificationBg->c);
 
 	{
 		Painter p(&img);
-		p.fillRect(0, 0, w - st::notifyBorderWidth, st::notifyBorderWidth, st::notifyBorder);
-		p.fillRect(w - st::notifyBorderWidth, 0, st::notifyBorderWidth, h - st::notifyBorderWidth, st::notifyBorder);
-		p.fillRect(st::notifyBorderWidth, h - st::notifyBorderWidth, w - st::notifyBorderWidth, st::notifyBorderWidth, st::notifyBorder);
-		p.fillRect(0, st::notifyBorderWidth, st::notifyBorderWidth, h - st::notifyBorderWidth, st::notifyBorder);
+		if (!styled) {
+			p.fillRect(0, 0, w - st::notifyBorderWidth, st::notifyBorderWidth, st::notifyBorder);
+			p.fillRect(w - st::notifyBorderWidth, 0, st::notifyBorderWidth, h - st::notifyBorderWidth, st::notifyBorder);
+			p.fillRect(st::notifyBorderWidth, h - st::notifyBorderWidth, w - st::notifyBorderWidth, st::notifyBorderWidth, st::notifyBorder);
+			p.fillRect(0, st::notifyBorderWidth, st::notifyBorderWidth, h - st::notifyBorderWidth, st::notifyBorder);
+		}
 
 		if (!options.hideNameAndPhoto) {
 			if (_fromScheduled && _history->peer->isSelf()) {
@@ -1074,13 +1184,18 @@ void Notification::updatePeerPhoto() {
 	_userpicLoaded = true;
 
 	Painter p(&_cache);
-	p.fillRect(
-		style::rtlrect(
-			QRect(
-				st::notifyPhotoPos,
-				QSize(st::notifyPhotoSize, st::notifyPhotoSize)),
-			width()),
-		st::notificationBg);
+	const auto photoRect = style::rtlrect(
+		QRect(
+			st::notifyPhotoPos,
+			QSize(st::notifyPhotoSize, st::notifyPhotoSize)),
+		width());
+	if (Styled(this)) {
+		p.setCompositionMode(QPainter::CompositionMode_Source);
+		p.fillRect(photoRect, Qt::transparent);
+		p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+	} else {
+		p.fillRect(photoRect, st::notificationBg);
+	}
 	_peer->paintUserpicLeft(
 		p,
 		_userpicView,
@@ -1363,6 +1478,22 @@ void HideAllButton::mouseReleaseEvent(QMouseEvent *e) {
 void HideAllButton::paintEvent(QPaintEvent *e) {
 	Painter p(this);
 	p.setClipRect(e->rect());
+
+	if (Styled(this)) {
+		p.setCompositionMode(QPainter::CompositionMode_Source);
+		p.fillRect(e->rect(), Qt::transparent);
+		p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+		Tristegram::PaintNotifyBackground(
+			p,
+			QRectF(rect()),
+			StyleOf(this),
+			crl::now(),
+			_mouseOver);
+		p.setFont(st::defaultLinkButton.font);
+		p.setPen(_mouseOver ? st::lightButtonFgOver : st::lightButtonFg);
+		p.drawText(rect(), tr::lng_notification_hide_all(tr::now), style::al_center);
+		return;
+	}
 
 	p.fillRect(rect(), _mouseOver ? st::lightButtonBgOver : st::lightButtonBg);
 	p.fillRect(0, 0, width(), st::notifyBorderWidth, st::notifyBorder);

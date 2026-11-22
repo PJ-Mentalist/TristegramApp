@@ -2018,6 +2018,8 @@ PRIVATE
     extera/tristegram_activity.h
     extera/tristegram_activity_ui.cpp
     extera/tristegram_activity_ui.h
+    extera/tristegram_notify_style.cpp
+    extera/tristegram_notify_style.h
     extera/tristegram_notes.cpp
     extera/tristegram_song_edit.cpp
     extera/tristegram_song_edit.h
@@ -2036,6 +2038,8 @@ PRIVATE
     extera/tristegram_dock.h
     extera/tristegram_cursor.cpp
     extera/tristegram_cursor.h
+    extera/tristegram_cursor_theme.cpp
+    extera/tristegram_cursor_theme.h
     extera/tristegram_sounds.cpp
     extera/tristegram_sounds.h
     extera/tristegram_crash.cpp

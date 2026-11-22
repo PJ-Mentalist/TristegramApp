@@ -12,6 +12,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "extera/tristegram_hotkeys.h"
 #include "extera/tristegram_crash.h"
 #include "extera/tristegram_cursor.h"
+#include "extera/tristegram_cursor_theme.h"
 #include "extera/tristegram_activity.h"
 #include "extera/tristegram_music.h"
 
@@ -672,6 +673,7 @@ void Application::run() {
 	Ui::Accessible::Init();
 	Tristegram::InstallInputEffects();
 	Tristegram::InstallCursorEffect();
+	Tristegram::InstallCustomCursor();
 	Tristegram::InstallCrashBreadcrumbs();
 	Tristegram::InstallDaytimeTheme();
 	Ui::InitTextOptions();

@@ -24,6 +24,11 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "extera/tristegram_dock.h"
 #include "extera/tristegram_logo.h"
 #include "extera/tristegram_icons.h"
+#include "extera/tristegram_cursor_theme.h"
+#include "extera/tristegram_effects.h"
+#include "extera/tristegram_notify_style.h"
+#include "ui/widgets/fields/input_field.h"
+#include "window/notifications_manager.h"
 #include "ui/boxes/single_choice_box.h"
 #include "lang/lang_keys.h"
 #include "mainwindow.h"
@@ -56,18 +61,21 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "styles/style_boxes.h"
 #include "styles/style_layers.h"
 #include "styles/style_menu_icons.h"
+#include "styles/style_widgets.h"
 #include "styles/style_chat_helpers.h"
 #include "styles/style_filter_icons.h"
 #include "styles/style_settings.h"
 
 #include <QtCore/QFileInfo>
 #include <QtGui/QClipboard>
+#include <QtGui/QCursor>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPainterPath>
 #include <QtGui/QPolygonF>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <vector>
 
@@ -85,6 +93,8 @@ enum class Section {
 	Themes,
 	Background,
 	Animations,
+	Cursor,
+	Notifications,
 	Avatars,
 	Icons,
 	Chats,
@@ -1648,19 +1658,6 @@ void FillAnimations(
 		[](int index) {
 			Config().setInt(u"tristegram_transition"_q, index);
 		});
-	AddLabel(content, tr::lng_tgs_cursor(tr::now));
-	AddSegments(
-		content,
-		{
-			tr::lng_tgs_effect_none(tr::now),
-			tr::lng_tgs_cursor_trail(tr::now),
-			tr::lng_tgs_cursor_dot(tr::now),
-			tr::lng_tgs_cursor_ring(tr::now),
-		},
-		std::clamp(Extera::Int(u"tristegram_cursor"_q), 0, 3),
-		[](int index) {
-			Config().setInt(u"tristegram_cursor"_q, index);
-		});
 	AddLabel(content, tr::lng_tgs_sounds(tr::now));
 	AddSegments(
 		content,
@@ -1770,6 +1767,602 @@ void FillAnimations(
 	}
 	AddNote(content, tr::lng_tgs_motion_note(tr::now));
 
+}
+
+// Three cursors over a soft card: the arrow, over a button, over text.
+void AddCursorPreview(not_null<Ui::VerticalLayout*> content) {
+	const auto card = content->add(
+		object_ptr<Ui::FixedHeightWidget>(content, Px(136)),
+		QMargins(Px(4), 0, Px(4), Px(6)));
+	card->paintRequest(
+	) | rpl::on_next([=] {
+		auto p = QPainter(card);
+		auto hq = PainterHighQualityEnabler(p);
+		const auto style = CurrentLogoStyle();
+		const auto rect = QRectF(card->rect()).marginsRemoved(
+			QMarginsF(0.5, 0.5, 0.5, 0.5));
+		p.setPen(QPen(Alpha(st::windowFg->c, 0.08), 1.));
+		p.setBrush(st::windowBgOver);
+		p.drawRoundedRect(rect, Px(18), Px(18));
+		auto bg = QLinearGradient(rect.topLeft(), rect.bottomRight());
+		bg.setColorAt(0., Alpha(style.from, 0.10));
+		bg.setColorAt(1., Alpha(style.to, 0.16));
+		p.setPen(Qt::NoPen);
+		p.setBrush(bg);
+		p.drawRoundedRect(rect, Px(18), Px(18));
+
+		const auto theme = Extera::Int(u"tristegram_cursor_theme"_q);
+		const auto labels = std::array<QString, 3>{
+			tr::lng_tgcu_role_arrow(tr::now),
+			tr::lng_tgcu_role_pointer(tr::now),
+			tr::lng_tgcu_role_text(tr::now),
+		};
+		const auto cell = rect.width() / 3.;
+		for (auto i = 0; i != 3; ++i) {
+			const auto area = QRectF(
+				rect.x() + cell * i,
+				rect.y() + Px(12),
+				cell,
+				Px(84));
+			const auto center = area.center();
+			if (i == 1) {
+				// A button under the hand.
+				const auto button = QRectF(
+					center.x() - Px(44),
+					center.y() - Px(16),
+					Px(72),
+					Px(30));
+				auto fill = QLinearGradient(button.topLeft(), button.topRight());
+				fill.setColorAt(0., Alpha(style.from, 0.85));
+				fill.setColorAt(1., Alpha(style.to, 0.85));
+				p.setPen(Qt::NoPen);
+				p.setBrush(fill);
+				p.drawRoundedRect(button, button.height() / 2, button.height() / 2);
+			} else if (i == 2) {
+				// Lines of text under the beam.
+				p.setPen(Qt::NoPen);
+				p.setBrush(Alpha(st::windowFg->c, 0.12));
+				for (auto line = 0; line != 3; ++line) {
+					const auto width = (line == 2) ? Px(46) : Px(76);
+					p.drawRoundedRect(
+						QRectF(
+							center.x() - Px(38),
+							center.y() - Px(20) + line * Px(14),
+							width,
+							Px(6)),
+						Px(3),
+						Px(3));
+				}
+			}
+			const auto size = Px(52);
+			const auto shift = (i == 1) ? QPointF(Px(6), Px(4)) : QPointF();
+			PaintCursorThemePreview(
+				p,
+				QRectF(
+					center.x() - size / 2. + shift.x(),
+					center.y() - size / 2. + shift.y(),
+					size,
+					size),
+				theme,
+				i);
+			p.setFont(st::normalFont);
+			p.setPen(st::windowSubTextFg);
+			p.drawText(
+				QRectF(area.x(), rect.bottom() - Px(34), cell, Px(24)),
+				Qt::AlignCenter,
+				labels[i]);
+		}
+	}, card->lifetime());
+	RepaintOnConfig(card);
+}
+
+// The own picture with a cross where the tip of the cursor is.
+void AddCursorPicturePicker(not_null<Ui::VerticalLayout*> group) {
+	const auto picker = group->add(
+		object_ptr<Ui::FixedHeightWidget>(group, Px(150)));
+	const auto box = [=] {
+		const auto picture = CursorPicture();
+		const auto area = QRectF(
+			(picker->width() - Px(120)) / 2.,
+			Px(15),
+			Px(120),
+			Px(120));
+		if (picture.isNull()) {
+			return area;
+		}
+		const auto size = QSizeF(picture.size()).scaled(
+			area.size(),
+			Qt::KeepAspectRatio);
+		return QRectF(
+			area.x() + (area.width() - size.width()) / 2.,
+			area.y() + (area.height() - size.height()) / 2.,
+			size.width(),
+			size.height());
+	};
+	picker->setCursor(style::cur_cross);
+	picker->paintRequest(
+	) | rpl::on_next([=] {
+		auto p = QPainter(picker);
+		auto hq = PainterHighQualityEnabler(p);
+		const auto picture = CursorPicture();
+		const auto target = box();
+		// A checkerboard shows the transparent parts.
+		p.save();
+		auto clip = QPainterPath();
+		clip.addRoundedRect(target.marginsAdded(QMarginsF(4, 4, 4, 4)), Px(10), Px(10));
+		p.setClipPath(clip);
+		const auto cell = Px(8);
+		for (auto y = 0; y * cell < target.height() + 8; ++y) {
+			for (auto x = 0; x * cell < target.width() + 8; ++x) {
+				p.fillRect(
+					QRectF(
+						target.x() - 4 + x * cell,
+						target.y() - 4 + y * cell,
+						cell,
+						cell),
+					((x + y) % 2)
+						? Alpha(st::windowFg->c, 0.06)
+						: Alpha(st::windowFg->c, 0.02));
+			}
+		}
+		p.restore();
+		if (picture.isNull()) {
+			p.setFont(st::normalFont);
+			p.setPen(st::windowSubTextFg);
+			p.drawText(target, Qt::AlignCenter, tr::lng_tgcu_file_empty(tr::now));
+			return;
+		}
+		p.setRenderHint(QPainter::SmoothPixmapTransform);
+		p.drawImage(target, picture);
+		const auto hot = CursorPictureHotSpot();
+		const auto point = QPointF(
+			target.x() + hot.x() * target.width(),
+			target.y() + hot.y() * target.height());
+		const auto arm = Px(10);
+		p.setPen(QPen(QColor(0, 0, 0, 160), Px(3), Qt::SolidLine, Qt::RoundCap));
+		p.drawLine(point - QPointF(arm, 0), point + QPointF(arm, 0));
+		p.drawLine(point - QPointF(0, arm), point + QPointF(0, arm));
+		p.setPen(QPen(CurrentLogoStyle().from, Px(1) + 0.5, Qt::SolidLine, Qt::RoundCap));
+		p.drawLine(point - QPointF(arm, 0), point + QPointF(arm, 0));
+		p.drawLine(point - QPointF(0, arm), point + QPointF(0, arm));
+		p.setBrush(QColor(255, 255, 255));
+		p.drawEllipse(point, Px(2), Px(2));
+	}, picker->lifetime());
+	picker->events(
+	) | rpl::filter([](not_null<QEvent*> e) {
+		return (e->type() == QEvent::MouseButtonPress)
+			|| (e->type() == QEvent::MouseMove
+				&& (static_cast<QMouseEvent*>(e.get())->buttons()
+					& Qt::LeftButton));
+	}) | rpl::on_next([=](not_null<QEvent*> e) {
+		if (CursorPicture().isNull()) {
+			return;
+		}
+		const auto target = box();
+		const auto position = static_cast<QMouseEvent*>(e.get())->pos();
+		SetCursorPictureHotSpot(QPointF(
+			(position.x() - target.x()) / std::max(target.width(), 1.),
+			(position.y() - target.y()) / std::max(target.height(), 1.)));
+	}, picker->lifetime());
+	RepaintOnConfig(picker);
+}
+
+void ChooseCursorPicture(not_null<Window::SessionController*> controller) {
+	FileDialog::GetOpenPath(
+		Core::App().getFileDialogParent(),
+		tr::lng_tgcu_file_choose(tr::now),
+		FileDialog::ImagesOrAllFilter(),
+		crl::guard(controller, [=](FileDialog::OpenResult &&result) {
+			auto image = !result.remoteContent.isEmpty()
+				? QImage::fromData(result.remoteContent)
+				: result.paths.isEmpty()
+				? QImage()
+				: QImage(result.paths.front());
+			if (image.isNull() || !SetCursorPicture(image)) {
+				controller->showToast(tr::lng_tgcu_file_failed(tr::now));
+			}
+		}));
+}
+
+void SetCursorCustom() {
+	if (Extera::Int(u"tristegram_cursor_theme"_q) != CursorCustomIndex()) {
+		Config().setInt(u"tristegram_cursor_theme"_q, CursorCustomIndex());
+	}
+}
+
+[[nodiscard]] int ClosestIndex(const std::vector<int> &values, int value) {
+	return int(std::distance(
+		values.begin(),
+		ranges::min_element(values, ranges::less(), [&](int item) {
+			return std::abs(item - value);
+		})));
+}
+
+void FillCursor(
+		not_null<Ui::VerticalLayout*> content,
+		not_null<Window::SessionController*> controller) {
+	AddCursorPreview(content);
+
+	AddLabel(content, tr::lng_tgcu_title(tr::now));
+	AddTiles(content, {
+		.count = CursorThemesCount(),
+		.name = [](int index) { return CursorThemeName(index); },
+		.paintSwatch = [](QPainter &p, QRect rect, int index) {
+			PaintCursorThemePreview(p, QRectF(rect), index);
+		},
+		.selected = [] { return Extera::Int(u"tristegram_cursor_theme"_q); },
+		.chosen = [=](int index) {
+			if (index == CursorFileIndex() && CursorPicture().isNull()) {
+				ChooseCursorPicture(controller);
+				return;
+			}
+			Config().setInt(u"tristegram_cursor_theme"_q, index);
+		},
+		.configKey = u"tristegram_cursor_theme"_q,
+	});
+	{
+		const auto sizes = std::vector<int>{ 20, 24, 30, 36, 44 };
+		AddLabel(content, tr::lng_tgcu_size(tr::now));
+		AddSegments(
+			content,
+			{
+				tr::lng_tgcu_size_small(tr::now),
+				tr::lng_tgcu_size_normal(tr::now),
+				tr::lng_tgcu_size_big(tr::now),
+				tr::lng_tgcu_size_large(tr::now),
+				tr::lng_tgcu_size_huge(tr::now),
+			},
+			ClosestIndex(sizes, Extera::Int(u"tristegram_cursor_size"_q)),
+			[=](int index) {
+				Config().setInt(u"tristegram_cursor_size"_q, sizes[index]);
+			});
+	}
+
+	AddLabel(content, tr::lng_tgcu_custom_title(tr::now));
+	AddTiles(content, {
+		.count = CursorShapesCount(),
+		.name = [](int index) { return CursorShapeName(index); },
+		.paintSwatch = [](QPainter &p, QRect rect, int index) {
+			PaintCursorShapePreview(p, QRectF(rect), index);
+		},
+		.selected = [] {
+			return (Extera::Int(u"tristegram_cursor_theme"_q)
+					== CursorCustomIndex())
+				? Extera::Int(u"tristegram_cursor_shape"_q)
+				: -1;
+		},
+		.chosen = [](int index) {
+			Config().setInt(u"tristegram_cursor_shape"_q, index);
+			SetCursorCustom();
+		},
+		.configKey = u"tristegram_cursor_shape"_q,
+	});
+	{
+		const auto group = AddGroup(content);
+		AddColorRow(
+			group,
+			controller,
+			tr::lng_tgcu_fill(tr::now),
+			u"tristegram_cursor_fill"_q,
+			CurrentLogoStyle().from,
+			[] {
+				Config().setBool(u"tristegram_cursor_gradient"_q, false);
+				SetCursorCustom();
+			});
+		AddColorRow(
+			group,
+			controller,
+			tr::lng_tgcu_outline(tr::now),
+			u"tristegram_cursor_outline"_q,
+			QColor(255, 255, 255),
+			[] { SetCursorCustom(); });
+		const auto toggle = [&](const QString &title, const QString &key) {
+			AddToggleRow(
+				group,
+				title,
+				[=] { return Extera::Bool(key); },
+				[=](bool value) {
+					Config().setBool(key, value);
+					SetCursorCustom();
+				});
+		};
+		toggle(tr::lng_tgcu_gradient(tr::now), u"tristegram_cursor_gradient"_q);
+		toggle(tr::lng_tgcu_glow(tr::now), u"tristegram_cursor_glow"_q);
+		toggle(tr::lng_tgcu_shadow(tr::now), u"tristegram_cursor_shadow"_q);
+	}
+
+	AddLabel(content, tr::lng_tgcu_file_title(tr::now));
+	{
+		const auto group = AddGroup(content);
+		AddCursorPicturePicker(group);
+		AddActionRow(
+			group,
+			tr::lng_tgcu_file_choose(tr::now),
+			nullptr,
+			[=] { ChooseCursorPicture(controller); },
+			true);
+	}
+	AddNote(content, tr::lng_tgcu_file_note(tr::now));
+
+	AddLabel(content, tr::lng_tgs_cursor(tr::now));
+	AddSegments(
+		content,
+		{
+			tr::lng_tgs_effect_none(tr::now),
+			tr::lng_tgs_cursor_trail(tr::now),
+			tr::lng_tgs_cursor_dot(tr::now),
+			tr::lng_tgs_cursor_ring(tr::now),
+		},
+		std::clamp(Extera::Int(u"tristegram_cursor"_q), 0, 3),
+		[](int index) {
+			Config().setInt(u"tristegram_cursor"_q, index);
+		});
+
+	AddLabel(content, tr::lng_tgfx_click_title(tr::now));
+	AddTiles(content, {
+		.count = ClickEffectsCount(),
+		.name = [](int index) { return ClickEffectName(index); },
+		.paintSwatch = [](QPainter &p, QRect rect, int index) {
+			PaintClickEffectPreview(p, QRectF(rect), index);
+		},
+		.selected = [] { return Extera::Int(u"tristegram_fx_click"_q); },
+		.chosen = [](int index) {
+			Config().setInt(u"tristegram_fx_click"_q, index);
+			PlayClickEffect(QCursor::pos(), index);
+		},
+		.configKey = u"tristegram_fx_click"_q,
+	});
+
+	AddLabel(content, tr::lng_tgfx_type_title(tr::now));
+	AddTiles(content, {
+		.count = TypeEffectsCount(),
+		.name = [](int index) { return TypeEffectName(index); },
+		.paintSwatch = [](QPainter &p, QRect rect, int index) {
+			PaintTypeEffectPreview(p, QRectF(rect), index);
+		},
+		.selected = [] { return Extera::Int(u"tristegram_fx_type"_q); },
+		.chosen = [](int index) {
+			Config().setInt(u"tristegram_fx_type"_q, index);
+		},
+		.configKey = u"tristegram_fx_type"_q,
+	});
+	content->add(
+		object_ptr<Ui::InputField>(
+			content,
+			st::defaultInputField,
+			tr::lng_tgfx_try()),
+		QMargins(Px(14), Px(2), Px(14), Px(10)));
+
+	AddLabel(content, tr::lng_tgfx_color(tr::now));
+	AddSegments(
+		content,
+		{
+			tr::lng_tgfx_color_logo(tr::now),
+			tr::lng_tgfx_rainbow(tr::now),
+			tr::lng_tgfx_color_theme(tr::now),
+			tr::lng_tgfx_color_gold(tr::now),
+			tr::lng_tgfx_color_own(tr::now),
+		},
+		std::clamp(Extera::Int(u"tristegram_fx_color"_q), 0, 4),
+		[](int index) {
+			Config().setInt(u"tristegram_fx_color"_q, index);
+		});
+	{
+		const auto group = AddGroup(content);
+		AddColorRow(
+			group,
+			controller,
+			tr::lng_tgfx_color_own(tr::now),
+			u"tristegram_fx_custom"_q,
+			CurrentLogoStyle().from,
+			[] { Config().setInt(u"tristegram_fx_color"_q, 4); });
+	}
+	AddLabel(content, tr::lng_tgcu_size(tr::now));
+	AddSegments(
+		content,
+		{
+			tr::lng_tgcu_size_small(tr::now),
+			tr::lng_tgcu_size_normal(tr::now),
+			tr::lng_tgcu_size_large(tr::now),
+		},
+		std::clamp(Extera::Int(u"tristegram_fx_size"_q), 0, 2),
+		[](int index) {
+			Config().setInt(u"tristegram_fx_size"_q, index);
+		});
+	AddLabel(content, tr::lng_tgfx_amount(tr::now));
+	AddSegments(
+		content,
+		{
+			tr::lng_tgfx_amount_few(tr::now),
+			tr::lng_tgcu_size_normal(tr::now),
+			tr::lng_tgfx_amount_many(tr::now),
+		},
+		std::clamp(Extera::Int(u"tristegram_fx_amount"_q), 0, 2),
+		[](int index) {
+			Config().setInt(u"tristegram_fx_amount"_q, index);
+		});
+	AddNote(content, tr::lng_tgfx_note(tr::now));
+}
+
+// A notification in the chosen style that appears again on a click.
+void AddNotifyPreview(not_null<Ui::VerticalLayout*> content) {
+	const auto card = content->add(
+		object_ptr<Ui::FixedHeightWidget>(content, Px(128)),
+		QMargins(Px(4), 0, Px(4), Px(6)));
+	struct State {
+		Ui::Animations::Basic animation;
+		crl::time started = 0;
+	};
+	const auto state = card->lifetime().make_state<State>();
+	state->animation.init([=] {
+		card->update();
+		const auto animated = NotifyStyleAnimated(NotifyStyle());
+		if (!animated
+			&& crl::now() - state->started > NotifyAppearDuration() + 300) {
+			state->animation.stop();
+		}
+	});
+	const auto replay = [=] {
+		state->started = crl::now();
+		if (!state->animation.animating()) {
+			state->animation.start();
+		}
+		card->update();
+	};
+	card->setCursor(style::cur_pointer);
+	card->paintRequest(
+	) | rpl::on_next([=] {
+		auto p = QPainter(card);
+		auto hq = PainterHighQualityEnabler(p);
+		const auto logo = CurrentLogoStyle();
+		const auto rect = QRectF(card->rect()).marginsRemoved(
+			QMarginsF(0.5, 0.5, 0.5, 0.5));
+		p.setPen(QPen(Alpha(st::windowFg->c, 0.08), 1.));
+		auto bg = QLinearGradient(rect.topLeft(), rect.bottomRight());
+		bg.setColorAt(0., Alpha(logo.from, 0.16));
+		bg.setColorAt(1., Alpha(logo.to, 0.22));
+		p.setBrush(st::windowBgOver);
+		p.drawRoundedRect(rect, Px(18), Px(18));
+		p.setPen(Qt::NoPen);
+		p.setBrush(bg);
+		p.drawRoundedRect(rect, Px(18), Px(18));
+
+		const auto style = NotifyStyle();
+		const auto now = crl::now();
+		const auto duration = std::max(NotifyAppearDuration(), crl::time(200));
+		const auto progress = std::clamp(
+			(now - state->started) / double(duration),
+			0.,
+			1.);
+		const auto width = std::min(rect.width() - Px(28), double(Px(360)));
+		const auto notify = QRectF(
+			rect.x() + (rect.width() - width) / 2.,
+			rect.y() + (rect.height() - Px(76)) / 2.,
+			width,
+			Px(76));
+		p.save();
+		p.setOpacity(std::min(1., progress * 1.6));
+		if (style) {
+			ApplyNotifyAppear(p, notify, progress, true);
+		}
+		PaintNotifyBackground(p, notify, style, now);
+		const auto photo = Px(50);
+		const auto photoRect = QRectF(
+			notify.x() + Px(12),
+			notify.y() + (notify.height() - photo) / 2.,
+			photo,
+			photo);
+		auto fill = QLinearGradient(photoRect.topLeft(), photoRect.bottomRight());
+		fill.setColorAt(0., logo.from);
+		fill.setColorAt(1., logo.to);
+		p.setPen(Qt::NoPen);
+		p.setBrush(fill);
+		p.drawEllipse(photoRect);
+		PaintLogo(
+			p,
+			photoRect.marginsRemoved(QMarginsF(Px(9), Px(9), Px(9), Px(9))),
+			LogoStyle{ .from = QColor(255, 255, 255), .to = QColor(255, 255, 255), .glow = false });
+		const auto left = photoRect.right() + Px(12);
+		const auto textWidth = notify.right() - left - Px(12);
+		p.setFont(st::semiboldFont);
+		p.setPen(st::windowFg);
+		p.drawText(
+			QRectF(left, notify.y() + Px(16), textWidth, st::semiboldFont->height),
+			Qt::AlignLeft | Qt::AlignVCenter,
+			u"Tristegram"_q);
+		p.setFont(st::normalFont);
+		p.setPen(st::windowSubTextFg);
+		p.drawText(
+			QRectF(left, notify.y() + Px(40), textWidth, st::normalFont->height),
+			Qt::AlignLeft | Qt::AlignVCenter,
+			st::normalFont->elided(tr::lng_tgnf_sample(tr::now), int(textWidth)));
+		p.restore();
+	}, card->lifetime());
+	card->events(
+	) | rpl::filter([](not_null<QEvent*> e) {
+		return (e->type() == QEvent::MouseButtonPress);
+	}) | rpl::on_next(replay, card->lifetime());
+	Config().changes(
+	) | rpl::filter([](const QString &key) {
+		return key.startsWith(u"tristegram_notify_"_q);
+	}) | rpl::on_next(replay, card->lifetime());
+	replay();
+}
+
+void SetTristegramNotifications(bool enabled) {
+	auto &settings = Core::App().settings();
+	if (settings.nativeNotifications() != enabled) {
+		return;
+	}
+	settings.setNativeNotifications(!enabled);
+	Core::App().saveSettingsDelayed();
+	Core::App().notifications().createManager();
+}
+
+void FillNotifications(
+		not_null<Ui::VerticalLayout*> content,
+		not_null<Window::SessionController*> controller) {
+	AddNotifyPreview(content);
+	AddLabel(content, tr::lng_tgnf_style(tr::now));
+	AddTiles(content, {
+		.count = NotifyStylesCount(),
+		.name = [](int index) { return NotifyStyleName(index); },
+		.paintSwatch = [](QPainter &p, QRect rect, int index) {
+			PaintNotifyStylePreview(p, QRectF(rect), index);
+		},
+		.selected = [] { return NotifyStyle(); },
+		.chosen = [=](int index) {
+			Config().setInt(u"tristegram_notify_style"_q, index);
+			if (index && Core::App().settings().nativeNotifications()) {
+				SetTristegramNotifications(true);
+				controller->showToast(tr::lng_tgnf_switched(tr::now));
+			}
+		},
+		.configKey = u"tristegram_notify_style"_q,
+	});
+	{
+		const auto values = std::vector<int>{ 0, 8, 14, 22 };
+		AddLabel(content, tr::lng_tgnf_corners(tr::now));
+		AddSegments(
+			content,
+			{
+				tr::lng_tgnf_corners_none(tr::now),
+				tr::lng_tgnf_corners_small(tr::now),
+				tr::lng_tgnf_corners_medium(tr::now),
+				tr::lng_tgnf_corners_big(tr::now),
+			},
+			ClosestIndex(values, Extera::Int(u"tristegram_notify_radius"_q)),
+			[=](int index) {
+				Config().setInt(u"tristegram_notify_radius"_q, values[index]);
+			});
+	}
+	AddLabel(content, tr::lng_tgnf_appear(tr::now));
+	AddSegments(
+		content,
+		{
+			tr::lng_tgs_transition_fade(tr::now),
+			tr::lng_tgs_transition_slide(tr::now),
+			tr::lng_tgnf_appear_pop(tr::now),
+			tr::lng_tgnf_appear_drop(tr::now),
+		},
+		NotifyAppear(),
+		[](int index) {
+			Config().setInt(u"tristegram_notify_appear"_q, index);
+		});
+	{
+		const auto group = AddGroup(content);
+		AddToggleRow(
+			group,
+			tr::lng_tgnf_own_windows(tr::now),
+			[] { return !Core::App().settings().nativeNotifications(); },
+			[](bool value) { SetTristegramNotifications(value); });
+		AddActionRow(
+			group,
+			tr::lng_tgnf_all_settings(tr::now),
+			nullptr,
+			[=] { OpenNative(controller, Settings::NotificationsId()); });
+	}
+	AddNote(content, tr::lng_tgnf_note(tr::now));
 }
 
 void FillAvatars(not_null<Ui::VerticalLayout*> content) {
@@ -2540,6 +3133,8 @@ SettingsWindow::SettingsWindow(
 	item(tr::lng_tgs_s_themes(tr::now), st::menuIconChangeColors, QColor(0xE8, 0x50, 0x8A), Section::Themes);
 	item(tr::lng_tgs_s_bg(tr::now), st::menuIconPhoto, QColor(0x2F, 0xB4, 0xF0), Section::Background);
 	item(tr::lng_tgs_s_anim(tr::now), st::menuIconStar, QColor(0xFF, 0xB2, 0x1F), Section::Animations);
+	item(tr::lng_tgcu_section(tr::now), st::menuIconSelect, QColor(0xFF, 0x4D, 0x8D), Section::Cursor);
+	item(tr::lng_tgnf_section(tr::now), st::menuIconNotifications, QColor(0xF0, 0x5A, 0x4A), Section::Notifications);
 	item(tr::lng_tgs_s_avatars(tr::now), st::menuIconProfile, QColor(0x22, 0xC5, 0x8B), Section::Avatars);
 	item(tr::lng_tgs_s_icons(tr::now), st::menuIconEmoji, QColor(0x2F, 0x8C, 0xF0), Section::Icons);
 	item(tr::lng_tgs_s_chats(tr::now), st::menuIconChatBubble, QColor(0x3A, 0x9B, 0xF0), Section::Chats);
@@ -2873,6 +3468,8 @@ void SettingsWindow::refillPane() {
 	case Section::Themes: FillThemes(inner, _controller); break;
 	case Section::Background: FillBackground(inner, _controller); break;
 	case Section::Animations: FillAnimations(inner, _controller); break;
+	case Section::Cursor: FillCursor(inner, _controller); break;
+	case Section::Notifications: FillNotifications(inner, _controller); break;
 	case Section::Avatars: FillAvatars(inner); break;
 	case Section::Icons: FillIcons(inner, _controller); break;
 	case Section::Chats: FillChats(inner, _controller); break;
