@@ -738,11 +738,23 @@ void ShowAiWriterSettings(not_null<Window::SessionController*> controller) {
 		const auto content = box->verticalLayout();
 
 		Ui::AddSubsectionTitle(content, tr::lng_tgai_key_title());
-		const auto key = box->addRow(object_ptr<Ui::PasswordInput>(
-			box,
+		auto keyWrap = object_ptr<Ui::RpWidget>(box);
+		keyWrap->resize(keyWrap->width(), st::defaultInputField.heightMin);
+		const auto key = Ui::CreateChild<Ui::PasswordInput>(
+			keyWrap.data(),
 			st::defaultInputField,
 			tr::lng_tgai_key_placeholder(),
-			Key()));
+			Key());
+		keyWrap->widthValue(
+		) | rpl::on_next([=](int width) {
+			key->resizeToWidth(width);
+			key->moveToLeft(0, 0);
+		}, keyWrap->lifetime());
+		key->heightValue(
+		) | rpl::on_next([wrap = keyWrap.data()](int height) {
+			wrap->resize(wrap->width(), height);
+		}, keyWrap->lifetime());
+		box->addRow(std::move(keyWrap));
 		const auto get = box->addRow(
 			object_ptr<Ui::LinkButton>(box, tr::lng_tgai_key_get(tr::now)),
 			st::boxRowPadding + QMargins(0, Px(8), 0, Px(4)));
