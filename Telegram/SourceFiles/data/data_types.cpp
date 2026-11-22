@@ -94,7 +94,9 @@ Storage::Cache::Key AudioAlbumThumbCacheKey(
 		const AudioAlbumThumbLocation &location) {
 	return Storage::Cache::Key{
 		Data::kAudioAlbumThumbCacheTag,
-		location.documentId,
+		// Tristegram: another key for the big covers, so the small ones
+		// kept in the cache before are not shown.
+		location.documentId ^ 0x5452495354454731ULL,
 	};
 }
 

@@ -542,6 +542,8 @@ private:
 
 	void refreshRightBadge();
 	[[nodiscard]] int rightBadgeWidth() const;
+	[[nodiscard]] int senderTypeSkip() const;
+	[[nodiscard]] QRect senderTypeRect(const QRect &trect) const;
 	void validateFromNameText(PeerData *from) const;
 	void ensureFromNameStatusLink(not_null<PeerData*> peer) const;
 	[[nodiscard]] EmojiStatusId fromNameStatusId(

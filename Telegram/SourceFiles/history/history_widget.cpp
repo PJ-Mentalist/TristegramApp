@@ -12,6 +12,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "extera/tristegram_sounds.h"
 
 #include "extera/tristegram_templates.h"
+#include "extera/tristegram_ai_writer.h"
 #include "ui/layers/generic_box.h"
 
 #include "extera/tristegram_logo.h"
@@ -698,6 +699,10 @@ HistoryWidget::HistoryWidget(
 		Tristegram::FillTemplatesMenu(request.menu, _field, [=] {
 			controller->show(Box(Tristegram::EditTemplatesBox));
 		});
+	});
+	_field->addContextMenuHook([=](
+			Ui::InputField::ContextMenuRequest request) {
+		Tristegram::FillAiWriterMenu(request.menu, _field, controller);
 	});
 	_field->setMimeDataHook(WrappedMessageFieldMimeHook([=](
 			not_null<const QMimeData*> data,

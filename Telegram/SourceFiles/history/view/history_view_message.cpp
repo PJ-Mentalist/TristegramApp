@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_message.h"
 
+#include "extera/tristegram_sender_type.h"
+
 #include "extera/tristegram_names.h"
 
 #include "extera/extera_feed.h"
@@ -1261,6 +1263,23 @@ int Message::rightBadgeWidth() const {
 	return badge ? badge->width : 0;
 }
 
+int Message::senderTypeSkip() const {
+	const auto type = Tristegram::SenderTypeOf(displayFrom());
+	if (type == Tristegram::SenderType::None) {
+		return 0;
+	}
+	return Tristegram::SenderTypeIconSize() + st::msgNameFont->spacew * 2;
+}
+
+QRect Message::senderTypeRect(const QRect &trect) const {
+	const auto size = Tristegram::SenderTypeIconSize();
+	const auto badgeWidth = rightBadgeWidth();
+	const auto right = trect.left()
+		+ trect.width()
+		- (badgeWidth ? (badgeWidth + st::msgPadding.right()) : 0);
+	return QRect(right - size, trect.top(), size, size);
+}
+
 void Message::applyGroupAdminChanges(
 		const base::flat_set<UserId> &changes) {
 	if (!data()->out()
@@ -1649,6 +1668,7 @@ QSize Message::performCountOptimalSize() {
 				if (Has<RightBadge>()) {
 					namew += st::msgPadding.right() + rightBadgeWidth();
 				}
+				namew += senderTypeSkip();
 				accumulate_max(maxWidth, namew);
 				accumulate_max(nonTextMax, namew);
 			} else if (via && !displayForwardedFrom()) {
@@ -2608,6 +2628,14 @@ void Message::paintFromName(
 	auto availableWidth = trect.width();
 	if (badgeWidth) {
 		availableWidth -= st::msgPadding.right() + badgeWidth;
+	}
+	if (const auto typeSkip = senderTypeSkip()) {
+		availableWidth -= typeSkip;
+		Tristegram::PaintSenderTypeIcon(
+			p,
+			senderTypeRect(trect),
+			Tristegram::SenderTypeOf(displayFrom()),
+			FromNameFg(context, colorIndex(), colorCollectible()));
 	}
 
 	const auto stm = context.messageStyle();
@@ -4428,6 +4456,16 @@ bool Message::getStateFromName(
 		const auto badgeWidth = rightBadgeWidth();
 		if (badgeWidth) {
 			availableWidth -= st::msgPadding.right() + badgeWidth;
+		}
+		if (const auto typeSkip = senderTypeSkip()) {
+			availableWidth -= typeSkip;
+			if (senderTypeRect(trect).contains(point)) {
+				outResult->customTooltip = true;
+				outResult->customTooltipText = Tristegram::SenderTypeTooltip(
+					Tristegram::SenderTypeOf(displayFrom()));
+				trect.setTop(trect.top() + st::msgNameFont->height);
+				return true;
+			}
 		}
 		const auto item = data();
 		const auto from = displayFrom();
@@ -6606,6 +6644,7 @@ void Message::fromNameUpdated(int width) const {
 	if (Has<RightBadge>()) {
 		width -= st::msgPadding.right() + rightBadgeWidth();
 	}
+	width -= senderTypeSkip();
 	const auto from = displayFrom();
 	validateFromNameText(from);
 	const auto via = item->Get<HistoryMessageVia>();

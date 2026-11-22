@@ -33,6 +33,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "extera/extera_config.h"
 #include "extera/extera_full_player.h"
 #include "extera/tristegram_logo.h"
+#include "extera/tristegram_song_edit.h"
 #include "history/history.h"
 #include "history/history_item.h"
 #include "lang/lang_keys.h"
@@ -63,6 +64,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
 #include <QtGui/QConicalGradient>
+#include <QtGui/QContextMenuEvent>
 #include <QtGui/QMouseEvent>
 #include <QtGui/QPainterPath>
 
@@ -246,6 +248,26 @@ struct Playlist {
 	result.duration = int(document->duration() / 1000);
 	result.saved = !item->isRegular();
 	return result;
+}
+
+// The title and the artist as changed in "Edit song".
+[[nodiscard]] Track Shown(Track track) {
+	if (const auto edit = SongEditFor(track.document)) {
+		if (!edit->title.isEmpty()) {
+			track.title = edit->title;
+		}
+		if (!edit->performer.isEmpty()) {
+			track.performer = edit->performer;
+		}
+	}
+	return track;
+}
+
+[[nodiscard]] std::optional<Track> Shown(std::optional<Track> track) {
+	if (track) {
+		*track = Shown(*track);
+	}
+	return track;
 }
 
 [[nodiscard]] QJsonObject Serialize(const Track &track) {
@@ -763,8 +785,9 @@ private:
 
 };
 
-// The cover of the track that plays now, loaded on demand.
-class Cover final {
+// The cover of the track that plays now, loaded on demand: the one
+// chosen in "Edit song", the picture inside the file, or Telegram's.
+class Cover final : public base::has_weak_ptr {
 public:
 	bool set(DocumentData *document, FullMsgId context) {
 		if (document == _document) {
@@ -772,34 +795,154 @@ public:
 		}
 		_document = document;
 		_image = QImage();
+		_embedded = QImage();
+		_embeddedTried = false;
 		_media = document ? document->createMediaView() : nullptr;
 		if (_media) {
 			_media->thumbnailWanted(Data::FileOriginMessage(context));
 		}
+		refreshEdit();
 		check();
 		return true;
 	}
+	void refreshEdit() {
+		_edit = _document ? SongEditCover(_document->id) : QImage();
+	}
 	bool check() {
-		if (!_media || !_image.isNull()) {
+		if (!_media) {
 			return false;
 		}
-		if (const auto image = _media->thumbnail()) {
-			_image = image->original().convertToFormat(
-				QImage::Format_ARGB32_Premultiplied);
-			return true;
+		auto changed = false;
+		if (_image.isNull()) {
+			if (const auto image = _media->thumbnail()) {
+				_image = image->original().convertToFormat(
+					QImage::Format_ARGB32_Premultiplied);
+				changed = true;
+			}
 		}
-		return false;
+		if (!_embeddedTried) {
+			tryEmbedded();
+		}
+		return changed;
 	}
 	[[nodiscard]] const QImage &image() const {
-		return _image;
+		return !_edit.isNull()
+			? _edit
+			: !_embedded.isNull()
+			? _embedded
+			: _image;
+	}
+	[[nodiscard]] rpl::producer<> updates() const {
+		return _updates.events();
 	}
 
 private:
+	// The full size picture from the tags of a downloaded file.
+	void tryEmbedded() {
+		const auto bytes = _media->bytes();
+		const auto path = bytes.isEmpty()
+			? _document->filepath(true)
+			: QString();
+		if (bytes.isEmpty() && path.isEmpty()) {
+			return;
+		}
+		_embeddedTried = true;
+		const auto document = _document;
+		const auto weak = base::make_weak(this);
+		crl::async([=] {
+			const auto information = Media::Player::PrepareForSending(
+				path,
+				bytes);
+			const auto song = std::get_if<Ui::PreparedFileInformation::Song>(
+				&information.media);
+			auto cover = song ? song->cover : QImage();
+			if (cover.isNull()) {
+				return;
+			}
+			cover = std::move(cover).convertToFormat(
+				QImage::Format_ARGB32_Premultiplied);
+			crl::on_main([=, cover = std::move(cover)]() mutable {
+				const auto strong = weak.get();
+				if (!strong || strong->_document != document) {
+					return;
+				}
+				const auto current = strong->image();
+				if (cover.width() > current.width()
+					|| !strong->_edit.isNull()) {
+					strong->_embedded = std::move(cover);
+					strong->_updates.fire({});
+				}
+			});
+		});
+	}
+
 	DocumentData *_document = nullptr;
 	std::shared_ptr<Data::DocumentMedia> _media;
 	QImage _image;
+	QImage _embedded;
+	QImage _edit;
+	bool _embeddedTried = false;
+	rpl::event_stream<> _updates;
 
 };
+
+// A big picture scaled down once with a good filter, so a small label
+// is not grainy.
+[[nodiscard]] QImage SmoothSquare(const QImage &image, int pixels) {
+	if (image.isNull() || pixels <= 0) {
+		return QImage();
+	}
+	const auto side = std::min(image.width(), image.height());
+	if (side <= pixels * 5 / 4) {
+		return QImage();
+	}
+	struct Entry {
+		qint64 key = 0;
+		int pixels = 0;
+		QImage image;
+	};
+	static auto cache = std::vector<Entry>();
+	const auto key = image.cacheKey();
+	for (const auto &entry : cache) {
+		if (entry.key == key && entry.pixels == pixels) {
+			return entry.image;
+		}
+	}
+	auto result = image.copy(
+		(image.width() - side) / 2,
+		(image.height() - side) / 2,
+		side,
+		side).scaled(
+			pixels,
+			pixels,
+			Qt::IgnoreAspectRatio,
+			Qt::SmoothTransformation);
+	if (cache.size() >= 12) {
+		cache.erase(cache.begin());
+	}
+	cache.push_back({ key, pixels, result });
+	return result;
+}
+
+// Draws the middle square of a picture into a rect, smoothly.
+void DrawSquare(QPainter &p, const QRectF &rect, const QImage &image) {
+	const auto pixels = int(std::ceil(
+		std::max(rect.width(), rect.height()) * style::DevicePixelRatio()));
+	const auto smooth = SmoothSquare(image, pixels);
+	if (!smooth.isNull()) {
+		p.drawImage(rect, smooth);
+		return;
+	}
+	const auto side = std::min(image.width(), image.height());
+	p.drawImage(
+		rect,
+		image,
+		QRect(
+			(image.width() - side) / 2,
+			(image.height() - side) / 2,
+			side,
+			side));
+}
 
 [[nodiscard]] QColor LabelColor(uint64 seed) {
 	static const auto colors = std::vector<QColor>{
@@ -856,13 +999,7 @@ void PaintVinyl(
 	clip.addEllipse(labelRect);
 	p.setClipPath(clip);
 	if (!cover.isNull()) {
-		const auto side = std::min(cover.width(), cover.height());
-		const auto source = QRect(
-			(cover.width() - side) / 2,
-			(cover.height() - side) / 2,
-			side,
-			side);
-		p.drawImage(labelRect, cover, source);
+		DrawSquare(p, labelRect, cover);
 	} else {
 		const auto base = LabelColor(seed);
 		auto gradient = QLinearGradient(
@@ -962,6 +1099,46 @@ void PaintWave(
 	}
 }
 
+// A filled polygon with soft round corners: the outline is stroked with
+// a thick round pen over a slightly smaller fill.
+void PaintRoundedPolygon(
+		QPainter &p,
+		const std::vector<QPointF> &points,
+		double radius,
+		QColor color) {
+	if (points.size() < 3) {
+		return;
+	}
+	auto center = QPointF();
+	for (const auto &point : points) {
+		center += point;
+	}
+	center /= double(points.size());
+	auto path = QPainterPath();
+	for (auto i = 0; i != int(points.size()); ++i) {
+		const auto delta = points[i] - center;
+		const auto length = std::hypot(delta.x(), delta.y());
+		const auto inset = (length > radius * 2)
+			? (points[i] - delta * (radius / length))
+			: points[i];
+		if (!i) {
+			path.moveTo(inset);
+		} else {
+			path.lineTo(inset);
+		}
+	}
+	path.closeSubpath();
+	p.setBrush(color);
+	p.setPen(QPen(
+		color,
+		radius * 2,
+		Qt::SolidLine,
+		Qt::RoundCap,
+		Qt::RoundJoin));
+	p.drawPath(path);
+	p.setPen(Qt::NoPen);
+}
+
 void PaintPlayIcon(QPainter &p, QRectF rect, bool playing, QColor color) {
 	auto hq = PainterHighQualityEnabler(p);
 	p.setPen(Qt::NoPen);
@@ -969,41 +1146,111 @@ void PaintPlayIcon(QPainter &p, QRectF rect, bool playing, QColor color) {
 	const auto c = rect.center();
 	const auto s = rect.width() / 2.;
 	if (playing) {
-		const auto w = s * 0.32;
-		const auto h = s * 1.1;
-		p.drawRoundedRect(QRectF(c.x() - w * 1.35, c.y() - h / 2, w, h), w / 3, w / 3);
-		p.drawRoundedRect(QRectF(c.x() + w * 0.35, c.y() - h / 2, w, h), w / 3, w / 3);
+		// Two soft pills.
+		const auto w = s * 0.36;
+		const auto h = s * 1.3;
+		const auto gap = s * 0.3;
+		p.drawRoundedRect(
+			QRectF(c.x() - gap / 2 - w, c.y() - h / 2, w, h),
+			w / 2.4,
+			w / 2.4);
+		p.drawRoundedRect(
+			QRectF(c.x() + gap / 2, c.y() - h / 2, w, h),
+			w / 2.4,
+			w / 2.4);
 	} else {
-		auto path = QPainterPath();
-		path.moveTo(c.x() - s * 0.38, c.y() - s * 0.6);
-		path.lineTo(c.x() + s * 0.62, c.y());
-		path.lineTo(c.x() - s * 0.38, c.y() + s * 0.6);
-		path.closeSubpath();
-		p.drawPath(path);
+		// A triangle with round corners, moved right to look centered.
+		const auto x = c.x() + s * 0.1;
+		PaintRoundedPolygon(p, {
+			QPointF(x - s * 0.5, c.y() - s * 0.68),
+			QPointF(x + s * 0.68, c.y()),
+			QPointF(x - s * 0.5, c.y() + s * 0.68),
+		}, s * 0.14, color);
 	}
 }
 
+// One soft triangle and a rounded bar, as on modern players.
 void PaintSkipIcon(QPainter &p, QRectF rect, bool forward, QColor color) {
 	auto hq = PainterHighQualityEnabler(p);
-	p.setPen(Qt::NoPen);
-	p.setBrush(color);
 	const auto c = rect.center();
 	const auto s = rect.width() / 2.;
 	const auto dir = forward ? 1. : -1.;
-	for (auto k = 0; k != 2; ++k) {
-		const auto shift = (k == 0 ? -0.42 : 0.18) * s * dir;
-		auto path = QPainterPath();
-		path.moveTo(c.x() + shift - s * 0.3 * dir, c.y() - s * 0.42);
-		path.lineTo(c.x() + shift + s * 0.3 * dir, c.y());
-		path.lineTo(c.x() + shift - s * 0.3 * dir, c.y() + s * 0.42);
-		path.closeSubpath();
-		p.drawPath(path);
-	}
-	const auto barX = c.x() + s * 0.5 * dir - (forward ? 0. : s * 0.12);
+	const auto tip = c.x() + s * 0.42 * dir;
+	const auto back = c.x() - s * 0.62 * dir;
+	PaintRoundedPolygon(p, {
+		QPointF(back, c.y() - s * 0.6),
+		QPointF(tip, c.y()),
+		QPointF(back, c.y() + s * 0.6),
+	}, s * 0.12, color);
+	const auto bar = s * 0.2;
+	const auto barX = c.x() + s * 0.5 * dir - (forward ? 0. : bar);
+	p.setPen(Qt::NoPen);
+	p.setBrush(color);
 	p.drawRoundedRect(
-		QRectF(barX, c.y() - s * 0.42, s * 0.12, s * 0.84),
-		s * 0.05,
-		s * 0.05);
+		QRectF(barX, c.y() - s * 0.62, bar, s * 1.24),
+		bar / 2.,
+		bar / 2.);
+}
+
+// The big round play button: logo colors, a glass shine on top, a soft
+// glow that grows under the mouse and a small squeeze on press.
+void PaintPlayButton(
+		QPainter &p,
+		QRectF rect,
+		bool playing,
+		double over,
+		double press) {
+	auto hq = PainterHighQualityEnabler(p);
+	const auto colors = CurrentLogoStyle();
+	const auto c = rect.center();
+	const auto r = rect.width() / 2. * (1. - 0.08 * press + 0.03 * over);
+	p.setPen(Qt::NoPen);
+
+	const auto halo = r * 1.32;
+	auto glow = QRadialGradient(c, halo);
+	glow.setColorAt(0.6, Alpha(colors.from, 0.22 + 0.22 * over));
+	glow.setColorAt(1., Alpha(colors.from, 0.));
+	p.setBrush(glow);
+	p.drawEllipse(c, halo, halo);
+
+	auto fill = QLinearGradient(
+		QPointF(c.x() - r, c.y() - r),
+		QPointF(c.x() + r, c.y() + r));
+	fill.setColorAt(0., colors.from.lighter(112));
+	fill.setColorAt(1., colors.to);
+	p.setBrush(fill);
+	p.drawEllipse(c, r, r);
+
+	auto shine = QLinearGradient(
+		QPointF(c.x(), c.y() - r),
+		QPointF(c.x(), c.y() + r));
+	shine.setColorAt(0., QColor(255, 255, 255, 76));
+	shine.setColorAt(0.48, QColor(255, 255, 255, 8));
+	shine.setColorAt(1., QColor(0, 0, 0, 22));
+	p.setBrush(shine);
+	p.drawEllipse(c, r, r);
+
+	p.setBrush(Qt::NoBrush);
+	p.setPen(QPen(QColor(255, 255, 255, 46), 1.));
+	p.drawEllipse(c, r - 0.5, r - 0.5);
+
+	const auto icon = r * 0.5;
+	PaintPlayIcon(
+		p,
+		QRectF(c.x() - icon, c.y() - icon, icon * 2, icon * 2),
+		playing,
+		QColor(255, 255, 255));
+}
+
+// A soft round highlight under a small button.
+void PaintButtonHover(QPainter &p, QRectF rect, double over) {
+	if (over <= 0.) {
+		return;
+	}
+	auto hq = PainterHighQualityEnabler(p);
+	p.setPen(Qt::NoPen);
+	p.setBrush(Alpha(st::windowFg->c, 0.09 * over));
+	p.drawEllipse(rect);
 }
 
 void PaintMoreIcon(QPainter &p, QRectF rect, QColor color) {
@@ -1830,6 +2077,9 @@ TrackList::TrackList(
 	if (IsPlaying()) {
 		_animation.start();
 	}
+	SongEditsChanged() | rpl::on_next([=] {
+		update();
+	}, lifetime());
 }
 
 void TrackList::setSource(Source source, int index) {
@@ -2181,17 +2431,12 @@ void TrackList::paintSystem(QPainter &p) {
 	for (auto i = 0; i != 3; ++i) {
 		const auto r = systemButton(i);
 		if (i == 1) {
-			auto gradient = QLinearGradient(r.topLeft(), r.bottomRight());
-			gradient.setColorAt(0., colors.from);
-			gradient.setColorAt(1., colors.to);
-			p.setPen(Qt::NoPen);
-			p.setBrush(gradient);
-			p.drawEllipse(r);
-			PaintPlayIcon(
+			PaintPlayButton(
 				p,
-				r.marginsRemoved(QMarginsF(Px(13), Px(13), Px(13), Px(13))),
+				r,
 				track.playing,
-				QColor(255, 255, 255));
+				(_systemOver == i) ? 1. : 0.,
+				0.);
 		} else {
 			if (_systemOver == i) {
 				p.setPen(Qt::NoPen);
@@ -2200,9 +2445,9 @@ void TrackList::paintSystem(QPainter &p) {
 			}
 			PaintSkipIcon(
 				p,
-				r.marginsRemoved(QMarginsF(Px(9), Px(9), Px(9), Px(9))),
+				r.marginsRemoved(QMarginsF(Px(11), Px(11), Px(11), Px(11))),
 				(i == 2),
-				st::windowFg->c);
+				Alpha(st::windowFg->c, (_systemOver == i) ? 0.95 : 0.75));
 		}
 	}
 	p.setFont(small->f);
@@ -2319,6 +2564,13 @@ void TrackList::showTrackMenu(int index) {
 			Library::Instance().removeTrack(playlist, index);
 		}, &st::menuIconDelete);
 	}
+	if (track.document) {
+		_menu->addAction(tr::lng_tgse_menu(tr::now), [=] {
+			EditSong(
+				controller,
+				controller->session().data().document(track.document));
+		}, &st::menuIconEdit);
+	}
 	if (!track.saved && track.peer) {
 		_menu->addAction(tr::lng_tgm_show_in_chat(tr::now), [=] {
 			const auto session = &controller->session();
@@ -2360,7 +2612,7 @@ void TrackList::paintEvent(QPaintEvent *e) {
 	const auto playing = IsPlaying();
 	const auto small = Font(12);
 	for (auto i = 0; i != int(_tracks.size()); ++i) {
-		const auto &track = _tracks[i];
+		const auto track = Shown(_tracks[i]);
 		const auto row = QRect(Px(8), i * Px(54), width() - Px(16), Px(54));
 		const auto isCurrent = current && SameTrack(*current, track);
 		if (isCurrent) {
@@ -2381,7 +2633,13 @@ void TrackList::paintEvent(QPaintEvent *e) {
 			row.y() + (row.height() - Px(38)) / 2.,
 			Px(38),
 			Px(38));
-		PaintVinyl(p, disc, QImage(), isCurrent && playing ? (now / 10 % 360) : 0., track.document);
+		PaintVinyl(
+			p,
+			disc,
+			SongEditCover(track.document),
+			isCurrent && playing ? (now / 10 % 360) : 0.,
+			track.document,
+			0.5);
 		const auto left = int(disc.right()) + Px(12);
 		const auto right = moreRect(i).x() - Px(8);
 		const auto durationText = track.duration
@@ -2564,6 +2822,14 @@ MusicWindow::MusicWindow(
 			update(heroRect());
 		}
 	}, lifetime());
+	_cover.updates() | rpl::on_next([=] {
+		update();
+	}, lifetime());
+	SongEditsChanged() | rpl::on_next([=] {
+		_cover.refreshEdit();
+		updateTrack();
+		update();
+	}, lifetime());
 	_state = instance->getState(Type::Song);
 	updateTrack();
 
@@ -2597,7 +2863,7 @@ MusicWindow::MusicWindow(
 }
 
 void MusicWindow::updateTrack() {
-	_track = CurrentTrack();
+	_track = Shown(CurrentTrack());
 	const auto current = Media::Player::instance()->current(Type::Song);
 	_cover.set(current.audio(), current.contextId());
 	const auto playing = IsPlaying();
@@ -2968,23 +3234,12 @@ void MusicWindow::paintEvent(QPaintEvent *e) {
 
 	// Controls.
 	const auto playRect = buttonRect(Button::Play);
-	{
-		auto glow = colors.from;
-		glow.setAlphaF(_over == Button::Play ? 0.35 : 0.22);
-		p.setPen(Qt::NoPen);
-		p.setBrush(glow);
-		p.drawEllipse(playRect.marginsAdded({ 4, 4, 4, 4 }));
-		auto gradient = QLinearGradient(playRect.topLeft(), playRect.bottomRight());
-		gradient.setColorAt(0., colors.from);
-		gradient.setColorAt(1., colors.to);
-		p.setBrush(gradient);
-		p.drawEllipse(playRect);
-		PaintPlayIcon(
-			p,
-			playRect.marginsRemoved(QMarginsF(Px(13), Px(13), Px(13), Px(13))),
-			IsPlaying(),
-			QColor(255, 255, 255));
-	}
+	PaintPlayButton(
+		p,
+		playRect,
+		IsPlaying(),
+		(_over == Button::Play) ? 1. : 0.,
+		0.);
 	for (const auto button : { Button::Previous, Button::Next, Button::Lyrics, Button::Skin }) {
 		const auto r = buttonRect(button);
 		if (_over == button) {
@@ -3019,7 +3274,11 @@ void MusicWindow::paintEvent(QPaintEvent *e) {
 					QPointF(inner.x() + inner.width() * (i == 1 ? 0.55 : 0.85), y));
 			}
 		} else {
-			PaintSkipIcon(p, inner, button == Button::Next, st::windowFg->c);
+			PaintSkipIcon(
+				p,
+				inner.marginsRemoved(QMarginsF(Px(2), Px(2), Px(2), Px(2))),
+				button == Button::Next,
+				Alpha(st::windowFg->c, (_over == button) ? 0.95 : 0.75));
 		}
 	}
 }
@@ -3054,32 +3313,33 @@ void PaintSpeakerIcon(QPainter &p, QRectF rect, int percent, QColor color) {
 	auto hq = PainterHighQualityEnabler(p);
 	const auto c = rect.center();
 	const auto s = rect.width() / 2.;
-	p.setPen(Qt::NoPen);
-	p.setBrush(color);
-	auto body = QPainterPath();
-	body.moveTo(c.x() - s * 0.85, c.y() - s * 0.3);
-	body.lineTo(c.x() - s * 0.45, c.y() - s * 0.3);
-	body.lineTo(c.x() + s * 0.05, c.y() - s * 0.75);
-	body.lineTo(c.x() + s * 0.05, c.y() + s * 0.75);
-	body.lineTo(c.x() - s * 0.45, c.y() + s * 0.3);
-	body.lineTo(c.x() - s * 0.85, c.y() + s * 0.3);
-	body.closeSubpath();
-	p.drawPath(body);
+	const auto x = c.x() - s * 0.2;
+	// The speaker: a soft box and a cone with round corners.
+	PaintRoundedPolygon(p, {
+		QPointF(x - s * 0.68, c.y() - s * 0.28),
+		QPointF(x - s * 0.3, c.y() - s * 0.28),
+		QPointF(x + s * 0.18, c.y() - s * 0.7),
+		QPointF(x + s * 0.18, c.y() + s * 0.7),
+		QPointF(x - s * 0.3, c.y() + s * 0.28),
+		QPointF(x - s * 0.68, c.y() + s * 0.28),
+	}, s * 0.1, color);
 	p.setBrush(Qt::NoBrush);
-	auto pen = QPen(color, std::max(1.5, s * 0.16), Qt::SolidLine, Qt::RoundCap);
+	auto pen = QPen(
+		color,
+		std::max(1.5, s * 0.15),
+		Qt::SolidLine,
+		Qt::RoundCap);
 	p.setPen(pen);
 	if (!percent) {
-		p.drawLine(
-			QPointF(c.x() + s * 0.35, c.y() - s * 0.35),
-			QPointF(c.x() + s * 0.95, c.y() + s * 0.35));
-		p.drawLine(
-			QPointF(c.x() + s * 0.95, c.y() - s * 0.35),
-			QPointF(c.x() + s * 0.35, c.y() + s * 0.35));
+		const auto m = x + s * 0.72;
+		const auto d = s * 0.26;
+		p.drawLine(QPointF(m - d, c.y() - d), QPointF(m + d, c.y() + d));
+		p.drawLine(QPointF(m + d, c.y() - d), QPointF(m - d, c.y() + d));
 		return;
 	}
 	const auto waves = (percent > 100) ? 3 : (percent > 50) ? 2 : 1;
 	for (auto i = 0; i != waves; ++i) {
-		const auto r = s * (0.45 + 0.3 * i);
+		const auto r = s * (0.42 + 0.28 * i);
 		if (i == 2) {
 			// Over 100%: the last wave glows in the logo colors.
 			const auto colors = CurrentLogoStyle();
@@ -3087,9 +3347,9 @@ void PaintSpeakerIcon(QPainter &p, QRectF rect, int percent, QColor color) {
 			p.setPen(pen);
 		}
 		p.drawArc(
-			QRectF(c.x() - r + s * 0.15, c.y() - r, r * 2, r * 2),
-			-50 * 16,
-			100 * 16);
+			QRectF(x + s * 0.12 - r, c.y() - r, r * 2, r * 2),
+			-45 * 16,
+			90 * 16);
 	}
 }
 
@@ -3216,6 +3476,7 @@ protected:
 	void mouseReleaseEvent(QMouseEvent *e) override;
 	void wheelEvent(QWheelEvent *e) override;
 	void leaveEventHook(QEvent *e) override;
+	void contextMenuEvent(QContextMenuEvent *e) override;
 
 private:
 	enum class Part {
@@ -3246,6 +3507,9 @@ private:
 	QPointer<VolumePopup> _volume;
 	QPointer<QWidget> _coverPopup;
 	base::Timer _coverTimer;
+	base::unique_qptr<Ui::PopupMenu> _menu;
+	Ui::Animations::Simple _playPress;
+	Ui::Animations::Simple _playOver;
 
 };
 
@@ -3286,12 +3550,22 @@ NowPlayingPill::NowPlayingPill(
 			update();
 		}
 	}, lifetime());
+	_cover.updates() | rpl::on_next([=] {
+		update();
+		if (_coverPopup) {
+			_coverPopup->update();
+		}
+	}, lifetime());
+	SongEditsChanged() | rpl::on_next([=] {
+		_cover.refreshEdit();
+		updateTrack();
+	}, lifetime());
 	_state = instance->getState(Type::Song);
 	updateTrack();
 }
 
 void NowPlayingPill::updateTrack() {
-	_track = CurrentTrack();
+	_track = Shown(CurrentTrack());
 	const auto current = Media::Player::instance()->current(Type::Song);
 	_cover.set(current.audio(), current.contextId());
 	const auto playing = IsPlaying()
@@ -3374,6 +3648,10 @@ void NowPlayingPill::mouseMoveEvent(QMouseEvent *e) {
 	}
 	const auto over = partAt(e->pos());
 	if (_over != over) {
+		if (_over == Part::Play || over == Part::Play) {
+			const auto to = (over == Part::Play) ? 1. : 0.;
+			_playOver.start([=] { update(); }, 1. - to, to, 180);
+		}
 		_over = over;
 		setCursor((over != Part::None) ? style::cur_pointer : style::cur_default);
 		update();
@@ -3381,6 +3659,9 @@ void NowPlayingPill::mouseMoveEvent(QMouseEvent *e) {
 }
 
 void NowPlayingPill::leaveEventHook(QEvent *e) {
+	if (_over == Part::Play) {
+		_playOver.start([=] { update(); }, 1., 0., 180);
+	}
 	_over = Part::None;
 	_coverTimer.cancel();
 	showCover(false);
@@ -3458,15 +3739,7 @@ protected:
 		clip.addRoundedRect(coverRect, Px(14), Px(14));
 		p.setClipPath(clip);
 		if (!image.isNull()) {
-			const auto s = std::min(image.width(), image.height());
-			p.drawImage(
-				coverRect,
-				image,
-				QRect(
-					(image.width() - s) / 2,
-					(image.height() - s) / 2,
-					s,
-					s));
+			DrawSquare(p, coverRect, image);
 		} else {
 			auto fill = QLinearGradient(
 				coverRect.topLeft(),
@@ -3540,6 +3813,27 @@ NowPlayingPill::~NowPlayingPill() {
 	}
 }
 
+void NowPlayingPill::contextMenuEvent(QContextMenuEvent *e) {
+	const auto document = Media::Player::instance()->current(
+		Type::Song).audio();
+	if (!document) {
+		return;
+	}
+	_coverTimer.cancel();
+	showCover(false);
+	_menu = base::make_unique_q<Ui::PopupMenu>(
+		this,
+		st::popupMenuWithIcons);
+	const auto controller = _controller;
+	_menu->addAction(tr::lng_tgse_menu(tr::now), [=] {
+		EditSong(controller, document);
+	}, &st::menuIconEdit);
+	_menu->addAction(tr::lng_tgm_title(tr::now), [=] {
+		ShowMusicWindow(controller);
+	}, &st::menuIconChangeOrder);
+	_menu->popup(e->globalPos());
+}
+
 void NowPlayingPill::wheelEvent(QWheelEvent *e) {
 	const auto delta = e->angleDelta().y();
 	if (!delta) {
@@ -3557,11 +3851,19 @@ void NowPlayingPill::wheelEvent(QWheelEvent *e) {
 void NowPlayingPill::mousePressEvent(QMouseEvent *e) {
 	if (e->button() == Qt::LeftButton) {
 		_pressed = partAt(e->pos());
+		if (_pressed == Part::Play) {
+			_playPress.start([=] { update(); }, 0., 1., 110);
+		}
+		update();
 	}
 }
 
 void NowPlayingPill::mouseReleaseEvent(QMouseEvent *e) {
 	const auto pressed = std::exchange(_pressed, Part::None);
+	if (pressed == Part::Play) {
+		_playPress.start([=] { update(); }, 1., 0., 220, anim::easeOutBack);
+	}
+	update();
 	if (pressed == Part::None || pressed != partAt(e->pos())) {
 		return;
 	}
@@ -3696,45 +3998,42 @@ void NowPlayingPill::paintEvent(QPaintEvent *e) {
 			Px(1));
 	}
 
-	const auto paintHover = [&](Part part) {
-		if (_over == part) {
-			p.setPen(Qt::NoPen);
-			p.setBrush(Alpha(st::windowFg->c, 0.1));
-			p.drawEllipse(partRect(part));
+	const auto iconColor = [&](Part part) {
+		return Alpha(st::windowFg->c, (_over == part) ? 0.95 : 0.72);
+	};
+	const auto pressScale = [&](Part part, QRectF rect) {
+		if (_pressed != part || _over != part) {
+			return rect;
 		}
+		const auto d = rect.width() * 0.06;
+		return rect.marginsRemoved(QMarginsF(d, d, d, d));
 	};
 	if (_track) {
 		for (const auto part : { Part::Previous, Part::Next }) {
-			paintHover(part);
+			const auto r = partRect(part);
+			PaintButtonHover(p, r, (_over == part) ? 1. : 0.);
 			PaintSkipIcon(
 				p,
-				partRect(part).marginsRemoved(QMarginsF(Px(6), Px(6), Px(6), Px(6))),
+				pressScale(part, r).marginsRemoved(
+					QMarginsF(Px(8), Px(8), Px(8), Px(8))),
 				(part == Part::Next),
-				st::windowFg->c);
+				iconColor(part));
 		}
-		const auto play = partRect(Part::Play);
-		auto fill = QLinearGradient(play.topLeft(), play.bottomRight());
-		fill.setColorAt(0., colors.from);
-		fill.setColorAt(1., colors.to);
-		p.setPen(Qt::NoPen);
-		p.setBrush(fill);
-		p.drawEllipse(play);
-		if (_over == Part::Play) {
-			p.setBrush(QColor(255, 255, 255, 40));
-			p.drawEllipse(play);
-		}
-		PaintPlayIcon(
+		PaintPlayButton(
 			p,
-			play.marginsRemoved(QMarginsF(Px(8), Px(8), Px(8), Px(8))),
+			partRect(Part::Play),
 			playing,
-			QColor(255, 255, 255));
+			_playOver.value((_over == Part::Play) ? 1. : 0.),
+			_playPress.value((_pressed == Part::Play) ? 1. : 0.));
 	}
-	paintHover(Part::Volume);
+	const auto volume = partRect(Part::Volume);
+	PaintButtonHover(p, volume, (_over == Part::Volume) ? 1. : 0.);
 	PaintSpeakerIcon(
 		p,
-		partRect(Part::Volume).marginsRemoved(QMarginsF(Px(5), Px(5), Px(5), Px(5))),
+		pressScale(Part::Volume, volume).marginsRemoved(
+			QMarginsF(Px(6), Px(6), Px(6), Px(6))),
 		VolumePercent(),
-		st::windowFg->c);
+		iconColor(Part::Volume));
 }
 
 } // namespace
@@ -3778,6 +4077,11 @@ void AddShareImportActions(
 				controller->showToast(tr::lng_tgs_theme_bad_code(tr::now));
 			}
 		}, &st::menuIconPalette);
+	}
+	if (const auto document = SongOf(item)) {
+		menu->addAction(tr::lng_tgse_menu(tr::now), [=] {
+			EditSong(controller, document);
+		}, &st::menuIconEdit);
 	}
 	if (const auto code = PlaylistCode(item)) {
 		const auto itemId = item->fullId();

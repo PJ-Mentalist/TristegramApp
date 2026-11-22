@@ -20,6 +20,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "extera/tristegram_fonts.h"
 #include "extera/tristegram_live_wallpaper.h"
 #include "extera/tristegram_dnd.h"
+#include "extera/tristegram_ai_writer.h"
 #include "extera/tristegram_dock.h"
 #include "extera/tristegram_logo.h"
 #include "extera/tristegram_icons.h"
@@ -2099,7 +2100,24 @@ void FillChats(
 			tr::lng_tgdnd_title(tr::now),
 			nullptr,
 			[=] { Tristegram::ShowDndBox(controller); });
+		AddActionRow(
+			group,
+			tr::lng_tgai_settings(tr::now),
+			nullptr,
+			[=] { Tristegram::ShowAiWriterSettings(controller); });
 		AddNote(content, tr::lng_tgc_about(tr::now));
+		{
+			const auto icons = AddGroup(content);
+			AddConfigToggle(
+				icons,
+				tr::lng_tgst_toggle(tr::now),
+				u"tristegram_sender_icons"_q);
+			AddConfigToggle(
+				icons,
+				tr::lng_tgst_people(tr::now),
+				u"tristegram_sender_icons_people"_q);
+			AddNote(content, tr::lng_tgst_about(tr::now));
+		}
 		{
 			const auto group = AddGroup(content);
 			AddConfigToggle(

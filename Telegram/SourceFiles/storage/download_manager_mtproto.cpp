@@ -579,7 +579,8 @@ mtpRequestId DownloadMtprotoTask::sendRequest(
 		const auto owner = &api().session().data();
 		return api().request(MTPupload_GetWebFile(
 			MTP_inputWebFileAudioAlbumThumbLocation(
-				MTP_flags(Flag::f_document | Flag::f_small),
+				// Tristegram: the big album cover, the small one is blurry.
+				MTP_flags(Flag::f_document),
 				owner->document(location.documentId)->mtpInput(),
 				MTPstring(),
 				MTPstring()),

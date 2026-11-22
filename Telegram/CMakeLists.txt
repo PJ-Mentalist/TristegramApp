@@ -2019,6 +2019,12 @@ PRIVATE
     extera/tristegram_activity_ui.cpp
     extera/tristegram_activity_ui.h
     extera/tristegram_notes.cpp
+    extera/tristegram_song_edit.cpp
+    extera/tristegram_song_edit.h
+    extera/tristegram_sender_type.cpp
+    extera/tristegram_sender_type.h
+    extera/tristegram_ai_writer.cpp
+    extera/tristegram_ai_writer.h
     extera/tristegram_notes.h
     extera/tristegram_together.cpp
     extera/tristegram_together.h

@@ -10,6 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_document.h"
 #include "data/data_peer.h"
 #include "data/data_session.h"
+#include "extera/tristegram_song_edit.h"
 #include "history/history_item_helpers.h"
 #include "history/history_item.h"
 #include "lang/lang_keys.h"
@@ -21,11 +22,17 @@ namespace Ui::Text {
 
 FormatSongName FormatSongNameFor(not_null<DocumentData*> document) {
 	const auto song = document->song();
-
-	return FormatSongName(
-		document->filename(),
-		song ? song->title : QString(),
-		song ? song->performer : QString());
+	auto title = song ? song->title : QString();
+	auto performer = song ? song->performer : QString();
+	if (const auto edit = Tristegram::SongEditFor(document->id)) {
+		if (!edit->title.isEmpty()) {
+			title = edit->title;
+		}
+		if (!edit->performer.isEmpty()) {
+			performer = edit->performer;
+		}
+	}
+	return FormatSongName(document->filename(), title, performer);
 }
 
 TextWithEntities FormatDownloadsName(not_null<DocumentData*> document) {
