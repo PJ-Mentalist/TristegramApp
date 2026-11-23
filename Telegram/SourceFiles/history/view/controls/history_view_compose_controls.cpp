@@ -8,6 +8,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "history/view/controls/history_view_compose_controls.h"
 
 #include "extera/tristegram_ai_writer.h"
+#include "extera/tristegram_templates.h"
+#include "ui/layers/generic_box.h"
 
 #include "history/view/controls/history_view_bot_menu_button.h"
 
@@ -3311,7 +3313,17 @@ void ComposeControls::initField() {
 	});
 	InitMessageFieldFade(_field, _st.field.textBg);
 	if (const auto window = _regularWindow) {
-		// Tristegram: the AI editor in topics, replies and other sections.
+		// Tristegram: templates and the AI editor in the chats shown by
+		// this panel, the same as in the main chat field.
+		_field->addContextMenuHook([=](
+				Ui::InputField::ContextMenuRequest request) {
+			if (!Tristegram::TemplatesEnabled()) {
+				return;
+			}
+			Tristegram::FillTemplatesMenu(request.menu, _field, [=] {
+				window->show(Box(Tristegram::EditTemplatesBox));
+			});
+		});
 		_field->addContextMenuHook([=](
 				Ui::InputField::ContextMenuRequest request) {
 			Tristegram::FillAiWriterMenu(request.menu, _field, window);
