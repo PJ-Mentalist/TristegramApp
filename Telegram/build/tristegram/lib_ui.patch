@@ -265,6 +265,68 @@ index e2ba0d6..13f039b 100644
  
  rankAdminFg: #49a355; // admin badge text and pill, green
  rankOwnerFg: #956ac8; // owner badge text and pill, purple
+diff --git a/ui/effects/panel_animation.cpp b/ui/effects/panel_animation.cpp
+index fd2a4d4..518c627 100644
+--- a/ui/effects/panel_animation.cpp
++++ b/ui/effects/panel_animation.cpp
+@@ -222,8 +222,10 @@ void PanelAnimation::setFinalImage(
+ 		if (!corner.valid()) return;
+ 		if ((_startWidth >= 0 && _startWidth < _finalWidth)
+ 			|| (_startHeight >= 0 && _startHeight < _finalHeight)) {
+-			Assert(corner.width <= inner.width());
+-			Assert(corner.height <= inner.height());
++			if (corner.width > inner.width()
++				|| corner.height > inner.height()) {
++				corner = Corner();
++			}
+ 		}
+ 	};
+ 	checkCorner(_topLeft);
+@@ -309,17 +311,33 @@ void PanelAnimation::setAlphaDuration() {
+ void PanelAnimation::start() {
+ 	Assert(!_finalImage.isNull());
+ 	RoundShadowAnimation::start(_finalWidth, _finalHeight, _finalImage.devicePixelRatio());
+-	auto checkCorner = [this](const Corner &corner) {
+-		if (!corner.valid()) return;
+-		if (_startWidth >= 0) Assert(corner.width <= _startWidth);
+-		if (_startHeight >= 0) Assert(corner.height <= _startHeight);
+-		Assert(corner.width <= _finalInnerWidth);
+-		Assert(corner.height <= _finalInnerHeight);
+-	};
+-	checkCorner(_topLeft);
+-	checkCorner(_topRight);
+-	checkCorner(_bottomLeft);
+-	checkCorner(_bottomRight);
++	// Tristegram: menus have bigger rounded corners, so a small menu (a
++	// submenu of one or two items) could start its animation smaller than
++	// a corner. Start it from the corner size then, and when the whole
++	// panel is smaller than a corner just skip the corner masks.
++	const auto corners = { &_topLeft, &_topRight, &_bottomLeft, &_bottomRight };
++	auto tooBig = false;
++	for (const auto corner : corners) {
++		if (corner->valid()
++			&& (corner->width > _finalInnerWidth
++				|| corner->height > _finalInnerHeight)) {
++			tooBig = true;
++		}
++	}
++	for (const auto corner : corners) {
++		if (!corner->valid()) {
++			continue;
++		} else if (tooBig) {
++			*corner = Corner();
++			continue;
++		}
++		if (_startWidth >= 0 && _startWidth < corner->width) {
++			_startWidth = corner->width;
++		}
++		if (_startHeight >= 0 && _startHeight < corner->height) {
++			_startHeight = corner->height;
++		}
++	}
+ }
+ 
+ auto PanelAnimation::computeState(float64 dt, float64 opacity) const
 diff --git a/ui/layers/layer_widget.cpp b/ui/layers/layer_widget.cpp
 index f8b1aa6..02faeb9 100644
 --- a/ui/layers/layer_widget.cpp
