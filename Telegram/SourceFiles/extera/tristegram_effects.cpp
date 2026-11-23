@@ -5,6 +5,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include "extera/tristegram_effects.h"
 
 #include "base/random.h"
+#include "base/timer.h"
 #include "extera/extera_config.h"
 #include "extera/tristegram_logo.h"
 #include "lang/lang_keys.h"
@@ -21,6 +22,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include <QtWidgets/QTextEdit>
 #include <QtWidgets/QWidget>
 
+#include <algorithm>
 #include <cmath>
 #include <optional>
 #include <vector>
@@ -32,6 +34,12 @@ constexpr auto kPi = 3.14159265358979;
 constexpr auto kMaxWindows = 8;
 constexpr auto kMaxParticles = 400;
 constexpr auto kSide = 360.;
+// The effects need no more than 60 frames per second, while the app
+// animations tick twice as often.
+constexpr auto kFrameDelay = crl::time(15);
+// An empty window stays shown for a while, so a quick next burst does
+// not show and hide a window again.
+constexpr auto kHideDelay = crl::time(1500);
 
 enum class Click {
 	None,
@@ -524,7 +532,7 @@ void SpawnType(Spawner &s, Type kind, const QString &letter) {
 	}
 }
 
-[[nodiscard]] QPainterPath HeartPath(QPointF center, double size) {
+[[nodiscard]] QPainterPath MakeHeartPath(QPointF center, double size) {
 	auto path = QPainterPath();
 	const auto s = size / 2.;
 	path.moveTo(center.x(), center.y() + s * 0.9);
@@ -539,7 +547,7 @@ void SpawnType(Spawner &s, Type kind, const QString &letter) {
 	return path;
 }
 
-[[nodiscard]] QPainterPath StarPath(double radius) {
+[[nodiscard]] QPainterPath MakeStarPath(double radius) {
 	auto path = QPainterPath();
 	for (auto i = 0; i != 10; ++i) {
 		const auto r = (i % 2) ? radius * 0.45 : radius;
@@ -555,6 +563,27 @@ void SpawnType(Spawner &s, Type kind, const QString &letter) {
 	return path;
 }
 
+// The shapes are built once and scaled by the painter.
+[[nodiscard]] const QPainterPath &UnitHeart() {
+	static const auto result = MakeHeartPath(QPointF(), 1.);
+	return result;
+}
+
+[[nodiscard]] const QPainterPath &UnitStar() {
+	static const auto result = MakeStarPath(1.);
+	return result;
+}
+
+void DrawScaled(QPainter &p, const QPainterPath &path, double scale) {
+	if (scale <= 0.) {
+		return;
+	}
+	p.save();
+	p.scale(scale, scale);
+	p.drawPath(path);
+	p.restore();
+}
+
 [[nodiscard]] QColor Alpha(QColor color, double alpha) {
 	color.setAlphaF(std::clamp(alpha * color.alphaF(), 0., 1.));
 	return color;
@@ -564,16 +593,12 @@ void SpawnType(Spawner &s, Type kind, const QString &letter) {
 	return 1. - std::pow(1. - t, 3);
 }
 
-void PaintParticle(QPainter &p, const Particle &particle, crl::time now) {
-	const auto age = double(now - particle.born);
-	if (age < 0.) {
-		return;
-	}
+[[nodiscard]] QPointF PositionAt(const Particle &particle, double age) {
 	const auto t = std::clamp(age / particle.life, 0., 1.);
-	const auto u = particle.unit;
 	auto position = particle.origin;
 	if (particle.drag) {
-		const auto travel = particle.life * (1. - std::pow(1. - t, 2.)) / 2.;
+		const auto left = 1. - t;
+		const auto travel = particle.life * (1. - left * left) / 2.;
 		position += particle.velocity * travel;
 	} else {
 		position += particle.velocity * age;
@@ -583,6 +608,65 @@ void PaintParticle(QPainter &p, const Particle &particle, crl::time now) {
 		position.rx() += std::sin(age / 240. + particle.seed * 2 * kPi)
 			* particle.wobble;
 	}
+	return position;
+}
+
+// How far from its position the particle may paint.
+[[nodiscard]] double VisualRadius(const Particle &particle) {
+	const auto u = particle.unit;
+	const auto size = particle.size;
+	switch (particle.draw) {
+	case Draw::Spark:
+	case Draw::Ember: return size * 2.4;
+	case Draw::Heart: return size;
+	case Draw::Star: return size * 1.6;
+	case Draw::Confetti: return size * 0.8;
+	case Draw::Bubble: return size * 1.2 + u;
+	case Draw::Snow: return size * 1.1;
+	case Draw::Petal: return size * 0.7;
+	case Draw::Pixel: return size + std::max(1., u * 2.);
+	case Draw::Letter: return size * 1.5 + u;
+	case Draw::Bolt: return size + u * 14.;
+	case Draw::Ray: return size * 1.5;
+	case Draw::Ring:
+	case Draw::RainbowRing: return size + u * 3.4 + 1.;
+	case Draw::Pulse:
+	case Draw::Flash: return size;
+	}
+	return size * 2.;
+}
+
+// The whole area the particle paints during its life.
+[[nodiscard]] QRectF ParticleBounds(const Particle &particle) {
+	const auto pad = VisualRadius(particle) + 3.;
+	if (particle.draw == Draw::Bolt) {
+		// Bolts are painted from the origin and do not move.
+		return QRectF(
+			particle.origin - QPointF(pad, pad),
+			QSizeF(pad * 2, pad * 2));
+	}
+	constexpr auto kSteps = 12;
+	auto result = QRectF();
+	for (auto i = 0; i <= kSteps; ++i) {
+		const auto position = PositionAt(
+			particle,
+			particle.life * double(i) / kSteps);
+		const auto box = QRectF(
+			position - QPointF(pad, pad),
+			QSizeF(pad * 2, pad * 2));
+		result = result.isNull() ? box : result.united(box);
+	}
+	return result;
+}
+
+void PaintParticle(QPainter &p, const Particle &particle, crl::time now) {
+	const auto age = double(now - particle.born);
+	if (age < 0.) {
+		return;
+	}
+	const auto t = std::clamp(age / particle.life, 0., 1.);
+	const auto u = particle.unit;
+	const auto position = PositionAt(particle, age);
 	const auto fade = (t < 0.65) ? 1. : std::max(0., (1. - t) / 0.35);
 	const auto grow = std::min(1., t * 6.);
 	const auto rotation = particle.rotation + particle.spin * age;
@@ -610,7 +694,7 @@ void PaintParticle(QPainter &p, const Particle &particle, crl::time now) {
 		p.translate(position);
 		p.rotate(rotation);
 		p.setBrush(color);
-		p.drawPath(HeartPath(QPointF(), size));
+		DrawScaled(p, UnitHeart(), size);
 		p.setBrush(Alpha(QColor(255, 255, 255), fade * 0.45));
 		p.drawEllipse(
 			QPointF(-size * 0.2, -size * 0.22),
@@ -624,9 +708,9 @@ void PaintParticle(QPainter &p, const Particle &particle, crl::time now) {
 		p.translate(position);
 		p.rotate(rotation);
 		p.setBrush(Alpha(particle.color, fade * 0.25));
-		p.drawPath(StarPath(radius * 1.6));
+		DrawScaled(p, UnitStar(), radius * 1.6);
 		p.setBrush(color);
-		p.drawPath(StarPath(radius));
+		DrawScaled(p, UnitStar(), radius);
 		p.restore();
 	} break;
 	case Draw::Confetti: {
@@ -804,7 +888,8 @@ void PaintParticle(QPainter &p, const Particle &particle, crl::time now) {
 	return Rng{ base::RandomValue<uint32>() };
 }
 
-// A small see-through window on top of everything for one burst.
+// A small see-through window on top of everything for the bursts.
+// It is only as big as the bursts it shows, so every frame is cheap.
 class FxWindow final : public QWidget {
 public:
 	FxWindow()
@@ -814,7 +899,8 @@ public:
 		| Qt::WindowStaysOnTopHint
 		| Qt::WindowTransparentForInput
 		| Qt::WindowDoesNotAcceptFocus)
-	, _animation([=] { tick(); }) {
+	, _animation([=] { tick(); })
+	, _hideTimer([=] { hideIfEmpty(); }) {
 		setAttribute(Qt::WA_TranslucentBackground);
 		setAttribute(Qt::WA_NoSystemBackground);
 		setAttribute(Qt::WA_TransparentForMouseEvents);
@@ -831,33 +917,38 @@ public:
 		return _used;
 	}
 
-	void place(QPoint center, int side) {
-		const auto geometry = QRect(
-			center - QPoint(side / 2, side / 2),
-			QSize(side, side));
+	// Starts over in the new place.
+	void place(QRect geometry) {
+		_particles.clear();
 		if (geometry != this->geometry()) {
-			_particles.clear();
 			setGeometry(geometry);
 		}
 	}
 
-	template <typename Callback>
-	void spawn(QPoint global, Callback &&callback) {
-		const auto now = crl::now();
+	// Grows to the new geometry keeping the particles where they are.
+	void grow(QRect geometry) {
+		const auto shift = QPointF(this->geometry().topLeft() - geometry.topLeft());
+		for (auto &particle : _particles) {
+			particle.origin += shift;
+		}
+		setGeometry(geometry);
+		update();
+	}
+
+	// The particles come with global positions.
+	void add(std::vector<Particle> &&fresh, crl::time now) {
 		_used = now;
-		auto rng = LiveRng();
-		auto spawner = Spawner(
-			_particles,
-			QPointF(global - geometry().topLeft()),
-			now,
-			rng,
-			CurrentParams());
-		callback(spawner);
+		const auto shift = QPointF(geometry().topLeft());
+		for (auto &particle : fresh) {
+			particle.origin -= shift;
+			_particles.push_back(std::move(particle));
+		}
 		if (int(_particles.size()) > kMaxParticles) {
 			_particles.erase(
 				_particles.begin(),
 				_particles.begin() + (_particles.size() - kMaxParticles));
 		}
+		_hideTimer.cancel();
 		if (isHidden()) {
 			show();
 		}
@@ -865,6 +956,7 @@ public:
 		if (!_animation.animating()) {
 			_animation.start();
 		}
+		_lastFrame = now;
 		update();
 	}
 
@@ -873,6 +965,9 @@ protected:
 		auto p = QPainter(this);
 		p.setCompositionMode(QPainter::CompositionMode_Source);
 		p.fillRect(e->rect(), Qt::transparent);
+		if (_particles.empty()) {
+			return;
+		}
 		p.setCompositionMode(QPainter::CompositionMode_SourceOver);
 		auto hq = PainterHighQualityEnabler(p);
 		const auto now = crl::now();
@@ -889,15 +984,28 @@ private:
 		}), _particles.end());
 		if (_particles.empty()) {
 			_animation.stop();
-			hide();
+			update(); // Clear the last frame.
+			_hideTimer.callOnce(kHideDelay);
 			return;
 		}
+		if (now - _lastFrame < kFrameDelay) {
+			return;
+		}
+		_lastFrame = now;
 		update();
+	}
+
+	void hideIfEmpty() {
+		if (_particles.empty()) {
+			hide();
+		}
 	}
 
 	std::vector<Particle> _particles;
 	Ui::Animations::Basic _animation;
+	base::Timer _hideTimer;
 	crl::time _used = 0;
+	crl::time _lastFrame = 0;
 
 };
 
@@ -906,19 +1014,41 @@ std::vector<QPointer<FxWindow>> &Windows() {
 	return result;
 }
 
-[[nodiscard]] FxWindow *WindowFor(QPoint global) {
-	const auto side = int(std::ceil(kSide * CurrentParams().unit));
+[[nodiscard]] FxWindow *WindowFor(QRect needed, int side) {
 	auto &list = Windows();
 	list.erase(ranges::remove_if(list, [](const QPointer<FxWindow> &w) {
 		return !w;
 	}), list.end());
+	const auto area = [](QRect rect) {
+		return qint64(rect.width()) * rect.height();
+	};
+	// A busy window that already covers the burst or may grow a little.
+	auto best = (FxWindow*)nullptr;
+	auto bestGrowth = qint64(-1);
 	for (const auto &window : list) {
-		if (window->busy()
-			&& window->width() == side
-			&& (window->geometry().center() - global).manhattanLength()
-				< side / 4) {
-			return window.data();
+		if (!window->busy()) {
+			continue;
 		}
+		const auto geometry = window->geometry();
+		const auto united = geometry.united(needed);
+		if (united.width() > side * 2 || united.height() > side * 2) {
+			continue;
+		}
+		const auto growth = area(united) - area(geometry);
+		if (growth > area(needed)) {
+			continue; // Too far away, a separate window is cheaper.
+		}
+		if (!best || growth < bestGrowth) {
+			best = window.data();
+			bestGrowth = growth;
+		}
+	}
+	if (best) {
+		const auto united = best->geometry().united(needed);
+		if (united != best->geometry()) {
+			best->grow(united);
+		}
+		return best;
 	}
 	auto chosen = (FxWindow*)nullptr;
 	for (const auto &window : list) {
@@ -946,8 +1076,37 @@ std::vector<QPointer<FxWindow>> &Windows() {
 			return w->used();
 		})->data();
 	}
-	chosen->place(global, side);
+	chosen->place(needed);
 	return chosen;
+}
+
+// Spawns a burst at the global point into a window that fits it.
+template <typename Callback>
+void Burst(QPoint global, Callback &&callback) {
+	const auto now = crl::now();
+	const auto params = CurrentParams();
+	auto fresh = std::vector<Particle>();
+	auto rng = LiveRng();
+	auto spawner = Spawner(fresh, QPointF(global), now, rng, params);
+	callback(spawner);
+	if (fresh.empty()) {
+		return;
+	}
+	auto bounds = QRectF();
+	for (const auto &particle : fresh) {
+		const auto box = ParticleBounds(particle);
+		bounds = bounds.isNull() ? box : bounds.united(box);
+	}
+	// Never bigger than the square the effects were drawn in before.
+	const auto side = int(std::ceil(kSide * params.unit));
+	const auto limit = QRect(
+		global - QPoint(side / 2, side / 2),
+		QSize(side, side));
+	const auto needed = bounds.toAlignedRect().intersected(limit);
+	if (needed.isEmpty()) {
+		return;
+	}
+	WindowFor(needed, side)->add(std::move(fresh), now);
 }
 
 [[nodiscard]] bool Enabled() {
@@ -994,7 +1153,7 @@ void OnType(QPointer<QWidget> focused, QString text) {
 		if (!caret) {
 			return;
 		}
-		WindowFor(*caret)->spawn(*caret, [&](Spawner &s) {
+		Burst(*caret, [&](Spawner &s) {
 			SpawnType(s, Type(kind), text);
 		});
 	});
@@ -1189,7 +1348,7 @@ void PlayClickEffect(QPoint global, int index) {
 	if (kind == Click::None) {
 		return;
 	}
-	WindowFor(global)->spawn(global, [&](Spawner &s) {
+	Burst(global, [&](Spawner &s) {
 		SpawnClick(s, kind);
 	});
 }

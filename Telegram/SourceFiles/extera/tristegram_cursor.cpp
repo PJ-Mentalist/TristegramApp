@@ -14,6 +14,7 @@ Telegram Desktop. Licensed under GNU GPL v3.
 #include <QtCore/QPointer>
 #include <QtGui/QCursor>
 #include <QtGui/QPainterPath>
+#include <QtGui/QtEvents>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QMenu>
 
@@ -29,7 +30,9 @@ constexpr auto kTrailLife = crl::time(380);
 	return style::ConvertScale(value);
 }
 
-// A see-through window over the app window that never takes the mouse.
+// A see-through window that never takes the mouse. It covers only the
+// part of the app window where the trail is, so every frame is cheap.
+// All the positions are global.
 class CursorOverlay final : public Ui::RpWidget {
 public:
 	explicit CursorOverlay(QWidget *window);
@@ -45,9 +48,10 @@ private:
 		crl::time when = 0;
 	};
 
-	void place();
 	void tick();
+	void fit(QRect needed);
 	[[nodiscard]] QRect dirtyRect() const;
+	[[nodiscard]] QRect windowRect() const;
 
 	std::deque<Point> _trail;
 	QPointF _target;
@@ -71,35 +75,58 @@ CursorOverlay::CursorOverlay(QWidget *window)
 	setAttribute(Qt::WA_TranslucentBackground);
 	setAttribute(Qt::WA_ShowWithoutActivating);
 	setProperty("tristegramEffects", true);
-	place();
 	hide();
 }
 
-void CursorOverlay::place() {
+QRect CursorOverlay::windowRect() const {
 	const auto window = parentWidget();
-	if (!window) {
+	return window
+		? QRect(window->mapToGlobal(QPoint()), window->size())
+		: QRect();
+}
+
+void CursorOverlay::fit(QRect needed) {
+	needed = needed.intersected(windowRect());
+	if (needed.isEmpty()) {
 		return;
 	}
-	const auto geometry = QRect(window->mapToGlobal(QPoint()), window->size());
-	if (geometry != this->geometry()) {
-		setGeometry(geometry);
+	const auto current = geometry();
+	const auto area = [](QRect rect) {
+		return qint64(rect.width()) * rect.height();
+	};
+	const auto big = Px(160);
+	const auto tooSmall = !current.contains(needed);
+	const auto tooBig = (current.width() > big || current.height() > big)
+		&& area(current) > 6 * area(needed);
+	if (!tooSmall && !tooBig) {
+		return;
 	}
+	// Some room around, so a moving mouse does not move the window
+	// on every frame.
+	const auto margin = Px(90);
+	const auto geometry = needed.marginsAdded(
+		{ margin, margin, margin, margin }
+	).intersected(windowRect());
+	setGeometry(geometry);
+	_painted = QRect();
+	update();
 }
 
 void CursorOverlay::moved(QPoint global) {
-	place();
-	const auto local = QPointF(mapFromGlobal(global));
+	const auto position = QPointF(global);
 	const auto now = crl::now();
 	if (!_lastMove || now - _lastMove > 500) {
-		_follow = local;
+		_follow = position;
 	}
-	_target = local;
+	_target = position;
 	_lastMove = now;
-	_trail.push_back({ local, now });
+	_trail.push_back({ position, now });
 	while (_trail.size() > 40) {
 		_trail.pop_front();
 	}
 	if (isHidden()) {
+		_painted = QRect();
+		fit(dirtyRect());
 		show();
 		raise();
 	}
@@ -118,7 +145,9 @@ void CursorOverlay::tick() {
 	const auto settled = (std::abs(_follow.x() - _target.x()) < 0.3)
 		&& (std::abs(_follow.y() - _target.y()) < 0.3);
 	const auto rect = dirtyRect();
-	update(rect.united(_painted));
+	fit(rect);
+	const auto origin = geometry().topLeft();
+	update(rect.united(_painted).translated(-origin));
 	_painted = rect;
 	const auto mode = Extera::Int(u"tristegram_cursor"_q);
 	const auto idle = (now - _lastMove > 1500);
@@ -146,6 +175,10 @@ void CursorOverlay::paintEvent(QPaintEvent *e) {
 		return;
 	}
 	auto p = QPainter(this);
+	p.setCompositionMode(QPainter::CompositionMode_Source);
+	p.fillRect(e->rect(), Qt::transparent);
+	p.setCompositionMode(QPainter::CompositionMode_SourceOver);
+	p.translate(-QPointF(geometry().topLeft()));
 	auto hq = PainterHighQualityEnabler(p);
 	const auto colors = CurrentLogoStyle();
 	const auto now = crl::now();
@@ -236,13 +269,23 @@ void InstallCursorEffect() {
 		if (e->type() != QEvent::MouseMove) {
 			return base::EventFilterResult::Continue;
 		}
+		// The same move goes to all the parents, handle it once.
+		static auto lastTime = quint64();
+		static auto lastPoint = QPoint();
+		const auto mouse = static_cast<QMouseEvent*>(e.get());
+		const auto global = mouse->globalPosition().toPoint();
+		if (mouse->timestamp() == lastTime && global == lastPoint) {
+			return base::EventFilterResult::Continue;
+		}
+		lastTime = mouse->timestamp();
+		lastPoint = global;
 		if (!Extera::Int(u"tristegram_cursor"_q)
 			|| Extera::Bool(u"tristegram_eco"_q)) {
 			return base::EventFilterResult::Continue;
 		}
 		const auto window = QApplication::activeWindow();
 		if (Suitable(window)) {
-			OverlayFor(window)->moved(QCursor::pos());
+			OverlayFor(window)->moved(global);
 		}
 		return base::EventFilterResult::Continue;
 	});
