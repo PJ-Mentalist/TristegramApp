@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/controls/history_view_compose_controls.h"
 
+#include "extera/tristegram_ai_writer.h"
+
 #include "history/view/controls/history_view_bot_menu_button.h"
 
 #include "base/call_delayed.h"
@@ -3308,6 +3310,13 @@ void ComposeControls::initField() {
 		return false;
 	});
 	InitMessageFieldFade(_field, _st.field.textBg);
+	if (const auto window = _regularWindow) {
+		// Tristegram: the AI editor in topics, replies and other sections.
+		_field->addContextMenuHook([=](
+				Ui::InputField::ContextMenuRequest request) {
+			Tristegram::FillAiWriterMenu(request.menu, _field, window);
+		});
+	}
 	_field->setEditLinkCallback(
 		DefaultEditLinkCallback(_show, _field, &_st.boxField));
 	_field->setEditLanguageCallback(DefaultEditLanguageCallback(_show));
